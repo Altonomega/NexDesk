@@ -8,11 +8,11 @@
 # stack as systemd services, and finally prints the owner's personal link.
 #
 # One-command install from anywhere (no repo needed on the machine):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh)
 #
 # The same command also updates (re-run) or removes NexDesk:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh) update
-#   bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh) uninstall
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh) update
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh) uninstall
 #
 # Or run it from a checkout directly:
 #   ./install.sh                      # defaults: /opt/nexdesk, port 8087
@@ -50,7 +50,7 @@ die()   { echo -e "${C_RED}  [x] $*${C_RESET}"; [[ -n "${LOG_FILE:-}" ]] && { _p
 # One-command bootstrap
 #    NexDesk is built to run straight from a pipe, in a single command:
 #
-#      bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh)
+#      bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh)
 #
 #    When executed that way only *this* file is downloaded, so if the rest of
 #    the source tree is not sitting next to us we fetch it and hand over to the
@@ -64,7 +64,7 @@ die()   { echo -e "${C_RED}  [x] $*${C_RESET}"; [[ -n "${LOG_FILE:-}" ]] && { _p
 #    When run from a full checkout (./install.sh) these branches are skipped
 #    and the normal installer below runs directly.
 # ---------------------------------------------------------------------------
-_SRC_URL="${NX_SRC_URL:-https://codeload.github.com/MNSH-Nexo/NexDesk/tar.gz/refs/heads/master}"
+_SRC_URL="${NX_SRC_URL:-https://codeload.github.com/Altonomega/NexDesk/tar.gz/refs/heads/master}"
 _DIR_OF() { cd "$(dirname "$1")" 2>/dev/null && pwd || echo "."; }
 SCRIPT_DIR="$(_DIR_OF "${BASH_SOURCE[0]:-$0}")"
 HAS_SOURCE=0

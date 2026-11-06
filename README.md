@@ -222,7 +222,7 @@ You do not need to download the repository or have it on the machine. On any
 Debian/Ubuntu server with `curl` (and `sudo` for the privileged steps), run:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh)
 ```
 
 That single command fetches the installer, downloads the NexDesk source, asks a
@@ -250,13 +250,13 @@ self-signed certificate) and the **password** — keep them secret.
 Updates keep your link, password and browser profile intact:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh) update
+bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh) update
 ```
 
 ### Remove NexDesk completely
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh) uninstall
+bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh) uninstall
 ```
 
 ### Custom install from a checkout
@@ -331,7 +331,7 @@ then:
 Remove NexDesk from any server without a local copy:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh) uninstall
+bash <(curl -fsSL https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh) uninstall
 ```
 
 From a checkout, the same thing — stops the services and removes the units, the

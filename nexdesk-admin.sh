@@ -340,7 +340,7 @@ do_update() {
   # failed download straight into bash runs an empty script that "succeeds",
   # which used to print "Update finished" even though nothing was updated.
   local upd="/tmp/nexdesk-update.sh"
-  if ! curl -fsSL --max-time 60 -o "$upd" https://raw.githubusercontent.com/MNSH-Nexo/NexDesk/master/install.sh; then
+  if ! curl -fsSL --max-time 60 -o "$upd" https://raw.githubusercontent.com/Altonomega/NexDesk/master/install.sh; then
     fail "Could not download the updater (network error) — please retry."
     return
   fi
