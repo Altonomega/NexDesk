@@ -1,0 +1,2424 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07070d">
+<title>NexDesk · Virtual Browser</title>
+<link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237c5cff'/><text x='16' y='22' font-family='Arial' font-weight='bold' font-size='18' fill='white' text-anchor='middle'>N</text></svg>">
+<style>
+  :root{
+    --bg:#07070d;
+    --chrome:rgba(13,13,24,.82);
+    --chrome-border:rgba(255,255,255,.08);
+    --ink:#eef0ff;
+    --ink-dim:#9aa0c4;
+    --brand:#7c5cff;
+    --brand2:#39d0ff;
+    --ok:#3ecf8e;
+    --warn:#f6c453;
+    --err:#ff6b6b;
+    --radius:12px;
+    --sat:env(safe-area-inset-top, 0px);
+    --sab:env(safe-area-inset-bottom, 0px);
+    --sal:env(safe-area-inset-left, 0px);
+    --sar:env(safe-area-inset-right, 0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  /* ---------- layout ---------- */
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;padding-top:var(--sat);
+       padding-left:var(--sal);padding-right:var(--sar);padding-bottom:var(--sab)}
+  /* ---------- top bar ---------- */
+  #topbar{display:flex;align-items:center;gap:10px;height:52px;flex:none;
+          padding:0 12px;background:var(--chrome);border-bottom:1px solid var(--chrome-border);
+          backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:20;
+          transition:transform .3s ease, opacity .3s ease}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0;flex:none;padding-left:2px}
+  .brand .name{max-width:60vw;overflow:hidden;text-overflow:ellipsis}
+  .brand .mark{width:30px;height:30px;border-radius:9px;flex:none;
+    background:linear-gradient(135deg,var(--brand),var(--brand2));
+    box-shadow:0 4px 16px rgba(124,92,255,.35), inset 0 0 0 1px rgba(255,255,255,.18);
+    display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#fff}
+  .brand .name{font-weight:800;font-size:15px;letter-spacing:.5px;white-space:nowrap;
+    background:linear-gradient(180deg,#ffffff 30%,#cfcaff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .spacer{flex:1}
+  .chip{display:flex;align-items:center;gap:8px;height:30px;padding:0 11px;border-radius:999px;flex:none;
+        background:rgba(255,255,255,.045);border:1px solid var(--chrome-border)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--warn);transition:background .3s, box-shadow .3s}
+  .dot.connecting{background:var(--warn);animation:pulse 1.1s infinite}
+  .dot.connected{background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.16)}
+  .dot.off{background:var(--err)}
+  @keyframes pulse{50%{opacity:.3}}
+  #status{font-size:12px;font-weight:600;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:24vw}
+  .hint{font-size:11px;color:var(--ink-dim);opacity:.75;display:none;white-space:nowrap}
+  /* ---------- mobile floating hint + zoom pill ---------- */
+  .btn:disabled, .btn.locked{opacity:.4; pointer-events:none; cursor:default; filter:grayscale(.35);}
+  .m-hint{position:fixed;top:calc(var(--sat) + 10px);left:50%;transform:translateX(-50%);z-index:24;
+          background:rgba(15,15,26,.92);border:1px solid var(--chrome-border);color:var(--ink-dim);
+          font-size:11px;font-weight:600;padding:6px 12px;border-radius:999px;pointer-events:none;
+          opacity:0;transition:opacity .25s ease;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  .m-hint.show{opacity:1}
+  /* Floating keyboard button — always visible on touch so the on-screen
+     keyboard is one tap away even when the top bar is hidden. */
+  .kbd-fab{display:none;position:fixed;right:12px;bottom:calc(var(--sab) + 54px);z-index:24;height:34px;
+           padding:0 12px;align-items:center;gap:6px;border-radius:999px;border:1px solid var(--chrome-border);
+           background:rgba(15,15,26,.92);color:var(--ink);font-size:12px;font-weight:700;
+           backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+           box-shadow:0 8px 26px rgba(0,0,0,.45);cursor:pointer;touch-action:manipulation;
+           transition:background .15s}
+  .kbd-fab svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .kbd-fab:active{background:rgba(124,92,255,.32);color:#fff}
+  /* Floating side button that reveals / collapses the control bar on touch.
+     On mobile the top bar is collapsed by default (a top overlay) so it never
+     jumps up on its own while browsing; tapping this button toggles it. */
+  .bar-tab{display:none;position:fixed;right:10px;top:calc(var(--sat) + 62px);z-index:26;width:40px;height:40px;
+           align-items:center;justify-content:center;border-radius:14px;border:1px solid rgba(255,255,255,.16);
+           background:rgba(15,15,26,.6);color:#e9e9ff;cursor:pointer;touch-action:manipulation;
+           backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+           box-shadow:0 8px 24px rgba(0,0,0,.45);
+           transition:background .2s,border-color .2s,color .2s,transform .12s}
+  .bar-tab svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .bar-tab .bc-close{display:none}
+  .bar-tab:active{transform:scale(.9)}
+  body.bar-open .bar-tab{border-color:rgba(124,92,255,.8);color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2));box-shadow:0 10px 26px rgba(124,92,255,.5)}
+  body.bar-open .bar-tab .bc-open{display:none}
+  body.bar-open .bar-tab .bc-close{display:block}
+  @media (hover:hover) and (pointer:fine){ .bar-tab{display:none!important} }
+  /* On touch the top bar becomes a translucent overlay sliding from the top;
+     it is collapsed (off-screen) until the side button opens it. */
+  body.touch-ui #topbar{position:absolute;top:var(--sat);left:var(--sal);right:var(--sar);z-index:22;margin:0;
+                        transform:translateY(-150%);opacity:0;pointer-events:none}
+  body.touch-ui.bar-open #topbar{transform:translateY(0);opacity:1;pointer-events:auto;box-shadow:0 16px 42px rgba(0,0,0,.5)}
+  /* Mouse / trackpad mode toggle — floating, only meaningful on touch devices.
+     Shown on the left so it never crowds the zoom pill + keyboard on the right. */
+  .mouse-pill{display:none;position:fixed;left:12px;bottom:calc(var(--sab) + 12px);z-index:24;height:34px;
+              padding:0 13px;align-items:center;gap:7px;border-radius:999px;border:1px solid var(--chrome-border);
+              background:rgba(15,15,26,.92);color:var(--ink);font-size:12px;font-weight:700;
+              backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+              box-shadow:0 8px 26px rgba(0,0,0,.45);cursor:pointer;touch-action:manipulation;
+              transition:background .15s,color .15s,border-color .15s}
+  .mouse-pill svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .mouse-pill:active{background:rgba(124,92,255,.32);color:#fff}
+  .mouse-pill.on{color:#fff;border-color:rgba(124,92,255,.7);background:rgba(124,92,255,.28)}
+  .mouse-pill.on::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.22);flex:none}
+  /* The visible on-screen pointer shown while mouse mode is active. It follows the
+     remote cursor so the user always sees where their "click" will land. */
+  .mouse-pointer{position:fixed;top:0;left:0;z-index:23;width:28px;height:28px;pointer-events:none;
+                 border-radius:50%;border:2px solid #fff;
+                 background:radial-gradient(circle, rgba(124,92,255,.30) 0%, rgba(124,92,255,.06) 55%, transparent 70%);
+                 box-shadow:0 0 0 2px rgba(124,92,255,.65), 0 2px 10px rgba(0,0,0,.5);will-change:transform}
+  .mouse-pointer::after{content:"";position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;
+                        background:#fff;transform:translate(-50%,-50%);box-shadow:0 0 3px #000}
+  @media (hover:hover) and (pointer:fine){ .mouse-pill,.mouse-pointer{display:none!important} }
+  body.vkb-open .mouse-pill{bottom:calc(var(--vkb-h,0px) + var(--sab) + 12px)}
+  body.mouse-mode #screen, body.mouse-mode #screen *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  /* In Mouse mode the overlay owns the screen's touches (trackpad/cursor and
+     two-finger scroll). Disable the browser's own pan/pinch so a two-finger
+     drag keeps delivering continuous touchmove to our handlers instead of the
+     browser hijacking it for page zoom/scroll. */
+  body.mouse-mode #screen{touch-action:none}
+  /* noVNC renders the remote cursor as a fixed <canvas> appended to <body> on
+     touch devices. In Mouse mode we show our own ring pointer, so hide it. */
+  body.mouse-mode > canvas[style*="position: fixed"]{ visibility: hidden !important; }
+  /* ---------- connection quality control ---------- */
+  .qctl{position:relative;display:inline-flex;align-items:center;gap:6px;height:32px;flex:none;padding:0 8px 0 6px;
+        background:rgba(255,255,255,.045);border:1px solid var(--chrome-border);border-radius:9px}
+  .qctl .qic{width:14px;height:14px;stroke:var(--brand2);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  #qualitySel{appearance:none;-webkit-appearance:none;border:0;background:transparent;color:var(--ink);font-size:13px;font-weight:700;cursor:pointer;
+              font-family:inherit;padding:0 18px 0 2px;outline:none;
+              background-image:linear-gradient(45deg,transparent 50%,var(--ink-dim) 50%),linear-gradient(135deg,var(--ink-dim) 50%,transparent 50%);
+              background-position:calc(100% - 9px) 50%,calc(100% - 4px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  #qualitySel option{background:#16162a;color:#eef0ff}
+  #qualitySel:hover{color:#fff}
+  #qinfo{font-size:11px;font-weight:600;color:var(--ink-dim);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  .qinfo-pop{display:none;position:absolute;right:6px;top:calc(100% + 6px);z-index:25;width:235px;padding:10px 12px;
+        background:rgba(15,15,26,.96);border:1px solid var(--chrome-border);border-radius:10px;font-size:11px;color:var(--ink-dim);line-height:1.6;
+        box-shadow:0 14px 34px rgba(0,0,0,.45)}
+  .qctl:hover .qinfo-pop{display:block}
+  .qinfo-pop b{color:var(--ink);font-weight:700}
+  /* ---------- toast (quality applied / new version) ---------- */
+  #toast{position:fixed;left:50%;bottom:20px;z-index:60;max-width:min(92vw,440px);padding:11px 16px;border-radius:12px;
+         background:rgba(18,18,34,.97);border:1px solid rgba(255,255,255,.14);color:var(--ink);font-size:13px;font-weight:600;
+         text-align:center;line-height:1.5;opacity:0;pointer-events:none;transform:translateX(-50%) translateY(16px);
+         transition:opacity .25s ease, transform .25s ease;box-shadow:0 14px 40px rgba(0,0,0,.55);backdrop-filter:blur(10px)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast .upd{display:block;margin-top:4px;font-weight:700;color:var(--brand2)}
+  /* ---------- resource meter (RAM/CPU) ---------- */
+  .meter{display:flex;align-items:center;gap:6px;flex:none}
+  .mcell{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;flex:none;
+         background:rgba(255,255,255,.045);border:1px solid var(--chrome-border)}
+  .mcell .ic{width:13px;height:13px;stroke:var(--ink-dim);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .mlabel{font-size:10px;font-weight:700;letter-spacing:.4px;color:var(--ink-dim)}
+  .mtrack{width:42px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;flex:none}
+  .mfill{display:block;height:100%;width:0;border-radius:3px;background:var(--ok);transition:width .5s ease, background .4s ease}
+  .mval{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap;min-width:44px;text-align:right}
+  /* ---------- buttons ---------- */
+  .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--chrome-border);
+       background:rgba(255,255,255,.05);color:var(--ink);font-size:13px;font-weight:600;
+       height:34px;padding:0 12px;border-radius:9px;cursor:pointer;flex:none;
+       transition:background .15s, transform .1s}
+  .btn:hover{background:rgba(255,255,255,.11)}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--brand2);outline-offset:2px}
+  .btn .ic{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .btn.danger{border-color:rgba(255,107,107,.35);color:#ffc2c2}
+  /* ---------- screen ---------- */
+  #screenWrap{flex:1;position:relative;min-height:0;background:#000;overflow:hidden}
+  #screen{position:absolute;inset:0}
+  #screen canvas{display:block}
+  /* ---------- connecting overlay ---------- */
+  #overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           background:radial-gradient(1200px 700px at 80% -10%,#1c1236 0%,#07070d 60%);
+           transition:opacity .35s ease}
+  #overlay.hidden{opacity:0;pointer-events:none}
+  .ocard{text-align:center;max-width:340px;padding:0 20px}
+  .ospin{width:46px;height:46px;margin:0 auto 18px;border-radius:50%;
+         border:3px solid rgba(124,92,255,.18);border-top-color:var(--brand);
+         animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ot{font-size:17px;font-weight:700;margin-bottom:8px}
+  .os{font-size:13px;color:var(--ink-dim);line-height:1.6}
+  #errBox{display:none;margin-top:16px;color:#ffb3b3;background:rgba(255,107,107,.1);
+          border:1px solid rgba(255,107,107,.35);padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
+  .retry{margin-top:14px}
+  /* ---------- responsive ---------- */
+  /* ---------- clipboard panel ---------- */
+  .clip{position:absolute;right:14px;bottom:14px;width:320px;max-width:calc(100vw - 28px);
+        background:rgba(15,15,26,.95);border:1px solid var(--chrome-border);border-radius:14px;
+        backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:30;overflow:hidden;
+        box-shadow:0 18px 50px rgba(0,0,0,.5);transition:opacity .18s ease, transform .18s ease}
+  .clip.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+  .clip-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;
+             border-bottom:1px solid var(--chrome-border);font-size:13px;font-weight:700}
+  .clip-x{border:0;background:transparent;color:var(--ink-dim);font-size:19px;line-height:1;cursor:pointer;padding:0 4px}
+  .clip-x:hover{color:var(--ink)}
+  .clip textarea{display:block;width:100%;height:96px;resize:none;border:0;border-bottom:1px solid var(--chrome-border);
+        background:rgba(255,255,255,.04);color:var(--ink);padding:10px 12px;font-size:13px;line-height:1.5}
+  .clip textarea:focus{outline:none}
+  .clip-status{padding:8px 12px 0;font-size:11px;min-height:16px;line-height:1.4}
+  .clip-status.ok{color:var(--ok)} .clip-status.err{color:var(--err)}
+  .clip-copy{padding:0 12px 11px}
+  .clip-copy .btn{width:100%;justify-content:center}
+  .clip-tip{padding:0 12px 11px;font-size:11px;color:var(--ink-dim);line-height:1.5}
+  .btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));border:0;color:#fff}
+  .btn.primary:hover{filter:brightness(1.08);background:linear-gradient(135deg,var(--brand),var(--brand2))}
+  /* Narrow/tablet widths (just wider than a phone) that are too small to fit every
+     control beside the brand used to squeeze the flex row: the CPU/RAM stats and the
+     status text crowded onto (or clipped next to) the NexDesk logo and the far-right
+     controls fell off-screen. From here down the top bar scrolls horizontally so
+     nothing is ever crushed, hidden or overlapping, and the brand (flex:none above)
+     can no longer be squeezed into the neighbouring stats. */
+  @media (max-width:1024px){
+    #topbar{overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;justify-content:flex-start;
+            scrollbar-width:none;-webkit-overflow-scrolling:touch}
+    #topbar::-webkit-scrollbar{display:none}
+    #topbar .brand{padding-right:8px}
+    .spacer{flex:0 0 14px}
+    .meter{display:none}              /* CPU/RAM stats need room; they stay on wide bars */
+    #qinfo{display:none}              /* duplicated quality read-out only fits on wide bars */
+    #hint{display:none!important}
+  }
+  @media (max-width:640px){
+    /* On portrait phones the top bar keeps its own row above the screen (normal
+       flow) so it never floats over the virtual browser — only in true
+       fullscreen does it overlay (see body.fs-ui below). It can scroll
+       horizontally when every control doesn't fit. Desktop keeps its layout. */
+    #topbar{height:48px;padding:0 8px;flex:none;
+            overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;justify-content:flex-start;
+            scrollbar-width:none;-webkit-overflow-scrolling:touch;z-index:22}
+    #topbar::-webkit-scrollbar{display:none}
+    #topbar .brand{padding-left:0}
+    #status{max-width:32vw}
+    .hide-sm{display:none}
+    #qinfo{display:none}               /* quality read-out is duplicated elsewhere */
+    #hint{display:none!important}      /* desktop fullscreen hint stays on desktop */
+    .btn{padding:0 10px;height:32px}
+    html,body{overscroll-behavior:none;touch-action:manipulation}
+    /* While the on-screen keyboard is open, the remote screen shrinks above it
+       so the field being typed into is never hidden behind the keys. */
+    body.vkb-open #app{padding-bottom:calc(var(--vkb-h,0px) + var(--sab))}
+    body.vkb-open #toast{bottom:calc(var(--vkb-h,0px) + 20px)}
+  }
+  @media (max-width:400px){ #topbar .brand .name{display:none} }
+  /* Compact keyboard in short/landscape phones so the remote screen stays usable. */
+  @media (max-height:520px){
+    #vkb .vk{height:32px;font-size:14px}
+    #vkb .vkb-row{margin-bottom:3px}
+    #vkb .vkb-top{margin-bottom:4px}
+  }
+  /* ---------- landscape phones: slim floating top bar + translucent keyboard ----------
+     The virtual screen keeps its full size underneath the keyboard, which becomes
+     a translucent floating bar (blurred, ~40% tint) so the page stays visible
+     through the keys and the field being typed into can be positioned above. */
+  @media (orientation:landscape) and (max-height:560px){
+    /* The slim top bar stays in normal flow above the virtual screen — it never
+       overlays the browser — and because it is always visible, the touch
+       auto-hide (which slides a floating bar away) is disabled in landscape. */
+    #topbar{position:static;height:40px;padding:0 6px;gap:6px;
+            overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;justify-content:flex-start;
+            scrollbar-width:none;-webkit-overflow-scrolling:touch}
+    #topbar::-webkit-scrollbar{display:none}
+    #topbar .brand .mark{width:24px;height:24px;border-radius:7px;font-size:12px}
+    #topbar .brand .name{display:none}
+    #topbar .btn{height:28px;padding:0 8px;font-size:11.5px}
+    #topbar .btn .ic{width:13px;height:13px}
+    #topbar .chip{height:26px;padding:0 8px;gap:5px}
+    #topbar .qctl{height:26px;padding:0 6px 0 4px}
+    #topbar .qctl #qualitySel{font-size:12px;padding:0 12px 0 2px}
+    #status{max-width:22vw;font-size:11px}
+    .meter{display:none}
+    #qinfo{display:none}              /* quality read-out is duplicated elsewhere */
+    #hint{display:none!important}
+    .m-hint{top:calc(var(--sat) + 8px)}
+    html,body{overscroll-behavior:none;touch-action:manipulation}
+    #vkb{background:rgba(9,9,20,.40);border-top:1px solid rgba(255,255,255,.14);
+         backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+         padding:4px 3px calc(4px + var(--sab))}
+    #vkb .vkb-top{margin:0 2px 3px}
+    #vkb .vkb-lang{height:20px;padding:0 6px;font-size:10px}
+    #vkb .vkb-hide{height:20px;width:20px;font-size:11px}
+    #vkb .vkb-lbl{font-size:9px}
+    #vkb .vkb-row{gap:4px;margin-bottom:3px}
+    #vkb .vk{height:24px;font-size:11px;border-radius:6px;border-color:rgba(255,255,255,.07);
+             background:rgba(255,255,255,.05)}
+    #vkb .vk.fn{font-size:9.5px}
+    #vkb .vk.zwnj{font-size:8px}
+    body.vkb-open #app{padding-bottom:0!important}   /* screen keeps full size */
+    body.vkb-open #toast{bottom:calc(var(--vkb-h,0px) + 16px)}
+    body.vkb-open .kbd-fab{display:none}
+    .kbd-fab{right:10px;bottom:calc(var(--sab) + 48px);height:30px;padding:0 10px;font-size:11px}
+  }
+  @media (pointer:coarse){
+    #topbar{margin-bottom:env(safe-area-inset-bottom)}
+  }
+  /* True fullscreen: the top bar becomes a floating overlay (auto-hides) so the
+     virtual desktop can take the entire screen. body.fs-ui is toggled from JS on
+     fullscreen change. */
+  body.fs-ui #topbar{position:absolute;top:0;left:0;right:0;height:48px;padding:0 8px;z-index:22;border-bottom:1px solid var(--chrome-border)}
+  @media (max-width:840px){ .meter{display:none} }
+  /* ---------- sound toggle state ---------- */
+  .btn.snd-on{color:#fff;border-color:rgba(62,207,142,.4);background:rgba(62,207,142,.12)}
+  .btn.snd-off{color:var(--ink-dim)}
+  .btn.snd-off .ic{stroke:#aab}
+  .btn.snd-sel{box-shadow:0 0 0 1px var(--brand2)}
+  /* ---------- My Files panel ---------- */
+  .files{position:absolute;right:14px;bottom:14px;width:430px;max-width:calc(100vw - 28px);
+        background:rgba(13,13,24,.96);border:1px solid var(--chrome-border);border-radius:16px;
+        backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);z-index:40;overflow:hidden;
+        box-shadow:0 24px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;
+        transition:opacity .18s ease, transform .18s ease}
+  .files.hidden{opacity:0;pointer-events:none;transform:translateY(10px) scale(.99)}
+  .files-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:13px 14px 12px;
+              border-bottom:1px solid var(--chrome-border)}
+  .files-title{display:flex;gap:11px;min-width:0;align-items:center}
+  .files-mark{width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;
+              background:linear-gradient(135deg,var(--brand),var(--brand2));box-shadow:0 6px 18px rgba(124,92,255,.35)}
+  .files-mark svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .files-name{font-size:14px;font-weight:800;letter-spacing:.2px}
+  .files-sub{font-size:11px;color:var(--ink-dim);line-height:1.45;margin-top:2px}
+  .files-close{border:0;background:transparent;color:var(--ink-dim);font-size:20px;line-height:1;cursor:pointer;padding:2px 4px;flex:none}
+  .files-close:hover{color:var(--ink)}
+  .files-body{padding:12px;overflow:auto;max-height:min(58vh,520px)}
+  /* dropzone */
+  .dz{border:1.5px dashed rgba(255,255,255,.16);border-radius:13px;padding:16px 14px;text-align:center;cursor:pointer;
+      background:rgba(124,92,255,.05);transition:border-color .15s, background .15s}
+  .dz:hover,.dz.over{border-color:var(--brand2);background:rgba(57,208,255,.08)}
+  .dz svg{width:26px;height:26px;stroke:var(--brand2);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin:0 auto 8px}
+  .dz-t{font-size:13px;color:var(--ink);font-weight:600}
+  .dz .link{color:var(--brand2);text-decoration:underline;cursor:pointer}
+  .dz-s{font-size:11px;color:var(--ink-dim);margin-top:5px;line-height:1.4}
+  .up-list{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+  .up-item{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.04);
+           border:1px solid var(--chrome-border)}
+  .up-item .up-name{flex:1;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .up-item .up-perc{font-size:11px;font-variant-numeric:tabular-nums;color:var(--ink-dim);flex:none}
+  .up-bar{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;flex:none;width:90px}
+  .up-fill{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .15s linear}
+  .up-item.ok .up-bar{background:var(--ok)} .up-item.ok .up-bar .up-fill{width:100%!important}
+  .up-item.err{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.3)}
+  .up-status{margin-left:auto;font-size:11px;color:var(--ok);flex:none;min-width:0}
+  .up-item.err .up-status{color:var(--err)}
+  .files-divider{height:1px;background:var(--chrome-border);margin:13px 0 10px}
+  .fl-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .fl-head span{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--ink-dim)}
+  .fl-refresh{border:0;background:rgba(255,255,255,.06);color:var(--ink-dim);width:26px;height:26px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .fl-refresh svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .fl-refresh:hover{color:var(--ink)}
+  .file-grid{display:flex;flex-direction:column;gap:5px}
+  .fitem{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:10px;transition:background .12s}
+  .fitem:hover{background:rgba(255,255,255,.05)}
+  .ficon{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#fff}
+  .fmeta{flex:1;min-width:0}
+  .fname{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .finfo{font-size:11px;color:var(--ink-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .factions{display:flex;gap:4px;flex:none;opacity:.0;transition:opacity .12s}
+  .fitem:hover .factions{opacity:1}
+  .fbtn{width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.06);color:var(--ink-dim);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .fbtn.dl:hover{color:var(--brand2)} .fbtn.del:hover{color:var(--err);background:rgba(255,107,107,.12)}
+  .fitem:hover .factions{opacity:1}
+  .file-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px 10px;color:var(--ink-dim)}
+  .file-empty svg{width:38px;height:38px;stroke:rgba(255,255,255,.2);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
+  .file-empty .et{font-size:13px;font-weight:700;color:var(--ink)}
+  .file-empty .es{font-size:11.5px;margin-top:4px;line-height:1.5;max-width:240px}
+  .files-foot{margin-top:12px;font-size:10.5px;color:var(--ink-dim);line-height:1.5;text-align:center;background:rgba(124,92,255,.06);
+              border:1px solid rgba(124,92,255,.18);border-radius:9px;padding:7px 9px}
+  .ficon.t-image{background:linear-gradient(135deg,#3ecf8e,#2a9d6f)}
+  .ficon.t-video{background:linear-gradient(135deg,#7c5cff,#4f39d0)}
+  .ficon.t-audio{background:linear-gradient(135deg,#ff9f43,#e76b1a)}
+  .ficon.t-pdf{background:linear-gradient(135deg,#ff6b6b,#d63043)}
+  .ficon.t-archive{background:linear-gradient(135deg,#f6c453,#d99b1f)}
+  .ficon.t-code{background:linear-gradient(135deg,#39d0ff,#2a7fd0)}
+  .ficon.t-doc{background:linear-gradient(135deg,#6c8bff,#4557d0)}
+  .ficon.t-sheet{background:linear-gradient(135deg,#22c98a,#169e6a)}
+  .ficon.t-slides{background:linear-gradient(135deg,#ff8a65,#e05c36)}
+  .ficon.t-text{background:linear-gradient(135deg,#9aa0c4,#6b7199)}
+  .ficon.t-file{background:linear-gradient(135deg,#4a4f6b,#2f3350)}
+  /* ---------- where a file came from ---------- */
+  .fsrc{display:inline-block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:.2px;padding:1px 6px;border-radius:6px;
+        border:1px solid rgba(255,255,255,.14);color:var(--ink-dim);max-width:100%;overflow:hidden;
+        text-overflow:ellipsis;white-space:nowrap;vertical-align:top}
+  .fsrc.mine{color:#9fe7c6;border-color:rgba(62,207,142,.35);background:rgba(62,207,142,.1)}
+  .fsrc.web{color:#a9d8ff;border-color:rgba(57,208,255,.35);background:rgba(57,208,255,.1)}
+  /* ---------- live downloads coming out of the virtual browser ---------- */
+  .dl-wrap{margin-top:11px}
+  .dl-list{display:flex;flex-direction:column;gap:6px}
+  .dl-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;
+           background:rgba(57,208,255,.07);border:1px solid rgba(57,208,255,.22)}
+  .dl-item.done{background:rgba(62,207,142,.08);border-color:rgba(62,207,142,.3)}
+  .dl-item.err{background:rgba(255,107,107,.07);border-color:rgba(255,107,107,.26)}
+  .dl-meta{flex:1;min-width:0}
+  .dl-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl-sub{font-size:10.5px;color:var(--ink-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl-bar{height:4px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
+  .dl-fill{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand2),var(--ok));transition:width .2s linear}
+  .dl-item.done .dl-fill{width:100%!important}
+  .dl-pct{flex:none;font-size:11px;font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:34px;text-align:right}
+  .chooser-src{display:inline-block;margin-left:7px;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:5px;
+        border:1px solid rgba(255,255,255,.14);color:var(--ink-dim);vertical-align:middle;white-space:nowrap}
+  .chooser-src.mine{color:#9fe7c6;border-color:rgba(62,207,142,.35);background:rgba(62,207,142,.1)}
+  .chooser-src.web{color:#a9d8ff;border-color:rgba(57,208,255,.35);background:rgba(57,208,255,.1)}
+  /* ---------- Upload-injection chooser (instead of the Linux file dialog) ---------- */
+  .chooser{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px;
+          background:rgba(5,5,12,.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .chooser.hidden{display:none}
+  .chooser-card{width:min(440px,100%);max-height:min(82vh,660px);display:flex;flex-direction:column;
+          background:rgba(15,15,28,.98);border:1px solid rgba(124,92,255,.4);border-radius:18px;overflow:hidden;
+          box-shadow:0 30px 90px rgba(0,0,0,.65)}
+  .chooser-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:15px 16px 11px;
+          border-bottom:1px solid var(--chrome-border)}
+  .chooser-title{display:flex;gap:11px;align-items:center;min-width:0}
+  .chooser-mark{width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;
+          background:linear-gradient(135deg,var(--brand2),var(--ok))}
+  .chooser-mark svg{width:19px;height:19px;stroke:#04211a;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .chooser-name{font-size:15px;font-weight:800;letter-spacing:.2px}
+  .chooser-sub{font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-top:3px}
+  .chooser-upload{padding:11px 16px 2px}
+  .chooser-upload .btn{width:100%;justify-content:center}
+  .chooser-body{flex:1;overflow:auto;padding:8px 12px 12px;min-height:80px}
+  .chooser-row{display:flex;align-items:center;gap:11px;padding:8px;border-radius:10px;cursor:pointer}
+  .chooser-row:hover{background:rgba(124,92,255,.1)}
+  .chooser-ic{width:33px;height:33px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
+          font-size:9px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#fff;background:linear-gradient(135deg,#4a4f6b,#2f3350)}
+  .chooser-meta{flex:1;min-width:0}
+  .chooser-nm{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chooser-sz{font-size:11px;color:var(--ink-dim);margin-top:1px}
+  .chooser-pick{flex:none;font-size:11px;font-weight:800;color:#04211a;background:linear-gradient(135deg,var(--brand2),var(--ok));
+          border:0;border-radius:8px;padding:7px 11px;cursor:pointer}
+  .chooser-empty{padding:22px 14px;text-align:center;color:var(--ink-dim);font-size:12px;line-height:1.6}
+  .chooser-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;
+          border-top:1px solid var(--chrome-border)}
+  .chooser-status{font-size:11px;color:var(--brand2);line-height:1.4;flex:1;min-width:0}
+  .chooser-cancel{flex:none}
+  @media (max-width:480px){
+    .files{right:8px;left:8px;bottom:8px;width:auto;max-width:none}
+    .files-body{max-height:56vh}
+  }
+  @media (hover:none){ .factions{opacity:1} .fbtn{background:rgba(255,255,255,.08)} }
+  /* ---------- mobile on-screen keyboard ---------- */
+  .vkb-toggle{display:none}
+  #btnKbd.act{color:#fff;border-color:rgba(124,92,255,.6);background:rgba(124,92,255,.18)}
+  #vkb{position:fixed;left:0;right:0;bottom:0;z-index:80;background:rgba(10,10,20,.94);
+       backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--chrome-border);
+       padding:8px 6px calc(8px + var(--sab));user-select:none;-webkit-user-select:none;
+       touch-action:manipulation;box-shadow:0 -18px 50px rgba(0,0,0,.45)}
+  #vkb.hidden{display:none}
+  #vkb .vkb-top{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
+  #vkb .vkb-lang{height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--chrome-border);
+        background:rgba(255,255,255,.06);color:var(--ink);font-size:12px;font-weight:800;letter-spacing:.5px;
+        cursor:pointer;flex:none}
+  #vkb .vkb-lang:active{background:rgba(124,92,255,.35)}
+  #vkb .vkb-lbl{flex:1;font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--ink-dim);text-align:center;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #vkb .vkb-hide{height:30px;width:30px;flex:none;border:1px solid var(--chrome-border);background:rgba(255,255,255,.06);
+        color:var(--ink-dim);border-radius:8px;font-size:15px;line-height:1;cursor:pointer}
+  #vkb .vkb-hide:active{color:var(--ink)}
+  #vkb .vkb-row{display:flex;gap:5px;margin-bottom:6px}
+  #vkb .vkb-row.dense{gap:3px}
+  #vkb .vk{flex:1;height:44px;min-width:0;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.055);
+        color:var(--ink);font-size:17px;font-weight:600;font-family:inherit;border-radius:9px;cursor:pointer;padding:0;
+        display:flex;align-items:center;justify-content:center;transition:background .1s, transform .06s}
+  #vkb .vk:active{background:rgba(124,92,255,.4);transform:translateY(1px)}
+  #vkb .vk.wide{flex:1.8}
+  #vkb .vk.space{flex:4.5}
+  #vkb .vk.fn{font-size:13px;font-weight:800;color:var(--ink-dim)}
+  #vkb .vk.fn:active{color:#fff}
+  #vkb .vk.zwnj{flex:2.2;font-size:10.5px;letter-spacing:.2px}
+  #vkb.shift-on .vk.fn.shift{background:var(--brand);color:#fff;border-color:transparent}
+  @media (max-width:640px){
+    #vkb .vk{height:42px;font-size:16px}
+    #vkb .vkb-row.dense .vk{font-size:14px}
+  }
+  @media (hover:none),(max-width:640px){ .vkb-toggle{display:inline-flex} }
+  /* ---------- landscape keyboard: compact, authoritative overrides ----------
+     The full portrait keyboard definitions (44px keys) live later in this file
+     and so override the earlier landscape block. These rules come after them and
+     make the on-screen keyboard slim in landscape so it no longer swallows the
+     remote screen: fixed/compact top row, tighter rows and smaller keys, with
+     progressively smaller tiers on shorter (phone) viewports. */
+  @media (orientation:landscape) and (max-height:560px){
+    #vkb{background:rgba(9,9,20,.42);border-top:1px solid rgba(255,255,255,.14);
+         backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+         padding:4px 5px calc(4px + var(--sab))}
+    #vkb .vkb-top{margin:0 2px 3px;gap:6px}
+    #vkb .vkb-lang{height:22px;padding:0 6px;font-size:10px;border-radius:6px}
+    #vkb .vkb-hide{height:22px;width:22px;font-size:11px;border-radius:6px}
+    #vkb .vkb-lbl{font-size:9px}
+    #vkb .vkb-row{gap:4px;margin-bottom:3px}
+    #vkb .vkb-row.dense{gap:3px}
+    #vkb .vk{height:29px;font-size:12.5px;border-radius:6px;border-color:rgba(255,255,255,.07);
+             background:rgba(255,255,255,.05)}
+    #vkb .vk.fn{font-size:10px}
+    #vkb .vk.zwnj{font-size:9px}
+    body.vkb-open #app{padding-bottom:0!important}          /* screen stays full size */
+    body.vkb-open #toast{bottom:calc(var(--vkb-h,0px) + 14px)}
+    body.vkb-open .kbd-fab{display:none}
+    .kbd-fab{right:10px;bottom:calc(var(--sab) + 44px);height:28px;padding:0 9px;font-size:11px}
+  }
+  /* Shorter landscape phones: pull the keyboard in a little more. */
+  @media (orientation:landscape) and (max-height:500px){
+    #vkb{padding:3px 5px calc(3px + var(--sab))}
+    #vkb .vk{height:26px;font-size:11.5px}
+    #vkb .vk.fn{font-size:9px}
+  }
+  /* Very short landscape phones: keys that would otherwise leave little remote
+     screen visible are compacted a bit while staying comfortably tappable. */
+  @media (orientation:landscape) and (max-height:430px){
+    #vkb .vkb-top{margin-bottom:2px}
+    #vkb .vk{height:22px;font-size:10.5px}
+    #vkb .vk.fn{font-size:8.5px}
+    #vkb .vk.zwnj{font-size:7.5px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true" style="background-image:url('data:image/png;base64,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');background-size:cover;background-position:center;background-color:transparent"></div>
+      <div class="name">NexDesk</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="meter" id="meter">
+      <div class="mcell" title="Host CPU usage">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 7V4M15 7V4M9 20v-3M15 20v-3M7 9H4M7 15H4M20 9h-3M20 15h-3"/></svg>
+        <span class="mlabel">CPU</span>
+        <span class="mtrack"><i class="mfill" id="cpuFill"></i></span>
+        <span class="mval" id="cpuVal">–</span>
+      </div>
+      <div class="mcell" title="Host RAM usage">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v3M12 4v3M15 4v3M9 17v3M12 17v3M15 17v3M4 9h3M4 12h3M4 15h3M17 9h3M17 12h3M17 15h3"/></svg>
+        <span class="mlabel">RAM</span>
+        <span class="mtrack"><i class="mfill" id="ramFill"></i></span>
+        <span class="mval" id="ramVal">–</span>
+      </div>
+    </div>
+    <div class="chip"><span class="dot" id="dot"></span><span id="status">Connecting</span></div>
+    <div class="qctl" title="Connection quality — how the virtual screen is compressed for your internet speed">
+      <svg class="qic" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+      <select id="qualitySel" aria-label="Connection quality">
+        <option value="auto" selected>Auto</option>
+        <option value="high">High</option>
+        <option value="balanced">Balanced</option>
+        <option value="low">Low</option>
+      </select>
+      <span class="qinfo-pop">Auto adjusts the on-screen quality so it stays smooth on slow internet — it lowers detail when the connection is struggling and restores it when there's room. <b>High</b> = sharpest (more data). <b>Balanced</b> = good all-round. <b>Low</b> = uses the least data, ideal on weak networks.</span>
+    </div>
+    <span class="qinfo" id="qinfo" title="Live link: image quality · bandwidth · latency">Auto</span>
+    <button class="btn" id="btnScrIn" aria-label="Make the virtual page bigger" title="Make the virtual page BIGGER — elements larger, less fits on screen"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+    <button class="btn" id="btnScrOut" aria-label="Make the virtual page smaller" title="Make the virtual page SMALLER — elements smaller, more fits on screen"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg></button>
+    <div class="hint" id="hint">tap to show controls</div>
+    <button class="btn hide-sm" id="btnFit" title="Fit / actual size"><svg class="ic" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg><span id="fitLbl">Fit</span></button>
+    <button class="btn" id="btnFull" title="Fullscreen"><svg class="ic" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+    <button class="btn" id="btnClip" title="Clipboard — paste text between your computer and the virtual desktop"><svg class="ic" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg></button>
+    <button class="btn" id="btnFiles" title="My Files — upload a file, then use it inside the virtual browser"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></button>
+    <button class="btn" id="btnSound" title="Virtual browser sound — on/off"><svg class="ic" id="soundIc" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a9 9 0 0 1 0 12"/></svg></button>
+    <button class="btn vkb-toggle" id="btnKbd" title="Keyboard — show or hide the on-screen keyboard"><svg class="ic" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M16.5 13h.01M9.5 13h5"/></svg></button>
+    <button class="btn" id="btnRefresh" title="Reconnect"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></button>
+    <a class="btn danger" id="btnLogout" href="logout" title="Log out">Log out</a>
+  </div>
+  <div id="mHint" class="m-hint">Tap the button on the side to show the control bar</div>
+  <button id="kbdFab" class="kbd-fab" type="button" style="display:none" title="Keyboard"><svg class="ic" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M16.5 13h.01M9.5 13h5"/></svg>Keyboard</button>
+  <button id="barTab" class="bar-tab" type="button" title="Show the control bar"><svg class="bc-open" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><svg class="bc-close" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+  <button id="mousePill" class="mouse-pill" type="button" style="display:none" title="Mouse / trackpad — switch to precise pointer control"><svg class="ic" viewBox="0 0 24 24"><path d="M4.5 4.5 11 19l2.3-6.7L20 10 4.5 4.5z"/><path d="M13.3 12.3 19 18"/></svg><span class="mp-lbl">Mouse</span></button>
+  <div id="mousePointer" class="mouse-pointer" style="display:none" aria-hidden="true"></div>
+
+  <div id="screenWrap">
+    <div id="screen"></div>
+    <div id="overlay">
+      <div class="ocard">
+        <div class="ospin"></div>
+        <div class="ot">Starting your virtual browser…</div>
+        <div class="os">This is a private, isolated desktop that lives on your own server.</div>
+        <div id="errBox"></div>
+        <button class="btn retry" id="btnRetry">Try again</button>
+      </div>
+    </div>
+    <div id="clipPanel" class="clip hidden">
+      <div class="clip-head"><span>Clipboard</span><button class="clip-x" id="clipClose" title="Close">&times;</button></div>
+      <textarea id="clipText" placeholder="Clipboard text — received from the virtual desktop, or paste here…"></textarea>
+      <div class="clip-status ok" id="clipStatus"></div>
+      <div class="clip-copy"><button class="btn primary" id="clipPaste" title="Send this text to the virtual browser and paste it">Paste into virtual desktop</button></div>
+      <div class="clip-copy"><button class="btn" id="clipCopy" title="Copy this text onto your computer's clipboard">Copy to my device</button></div>
+      <div class="clip-tip">Copy on your computer, open this panel, then press “Paste into virtual desktop”. If it can’t read your device clipboard automatically, click the box and press Ctrl+V, then Paste.</div>
+    </div>
+
+    <div id="filesPanel" class="files hidden">
+      <div class="files-head">
+        <div class="files-title">
+          <div class="files-mark"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+          <div style="min-width:0">
+            <div class="files-name">My Files</div>
+            <div class="files-sub">Files from your computer and files the virtual browser downloads — one folder, ready to download, delete, or send to a site.</div>
+          </div>
+        </div>
+        <button class="files-close" id="filesClose" title="Close" aria-label="Close">&times;</button>
+      </div>
+      <div class="files-body">
+        <div class="dz" id="dz" role="button" tabindex="0" aria-label="Upload files">
+          <svg viewBox="0 0 24 24"><path d="M12 16V7M8 11l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <div class="dz-t">Drop files here, or <span class="link">choose from your computer</span></div>
+          <div class="dz-s">Uploaded files appear in “My Files” on the virtual desktop.</div>
+          <input type="file" id="fileInput" multiple hidden>
+        </div>
+        <div id="upList" class="up-list"></div>
+        <div id="dlWrap" class="dl-wrap hidden">
+          <div class="fl-head"><span>Downloading in the virtual browser</span></div>
+          <div id="dlList" class="dl-list"></div>
+        </div>
+        <div class="files-divider"></div>
+        <div class="fl-head"><span>On the server</span>
+          <button class="fl-refresh" id="flRefresh" title="Refresh list" aria-label="Refresh"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></button>
+        </div>
+        <div id="fileGrid" class="file-grid"></div>
+        <div id="fileEmpty" class="file-empty">
+          <svg viewBox="0 0 24 24"><path d="M12 3v9m0 0 3-3m-3 3-3-3"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></svg>
+          <div class="et">No files yet</div>
+          <div class="es">Drop a file above to move it from your computer into your virtual browser.</div>
+        </div>
+        <div class="files-foot">Tip: files the virtual browser downloads land here too. Pick any of them in a site’s “choose file” dialog and it’s delivered straight into the page — no Linux dialog, no second upload.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="chooser" class="chooser hidden">
+  <div class="chooser-card">
+    <div class="chooser-head">
+      <div class="chooser-title">
+        <div class="chooser-mark"><svg viewBox="0 0 24 24"><path d="M12 16V7M8 11l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></div>
+        <div style="min-width:0">
+          <div class="chooser-name">Send a file to this site</div>
+          <div class="chooser-sub">The website in your virtual browser is asking for a file. Pick one below — including files the virtual browser just downloaded — and it’s delivered straight in (no Linux dialog).</div>
+        </div>
+      </div>
+      <button class="files-close" id="chooserClose" title="Cancel" aria-label="Cancel">&times;</button>
+    </div>
+    <div class="chooser-upload"><button class="btn primary" id="chooserUpload">Upload a new file from your computer</button>
+      <input type="file" id="chooserInput" hidden></div>
+    <div id="chooserList" class="chooser-body"></div>
+    <div class="chooser-foot">
+      <div class="chooser-status" id="chooserStatus"></div>
+      <button class="btn danger chooser-cancel" id="chooserCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="vkb" class="hidden" aria-label="Virtual keyboard">
+  <div class="vkb-top">
+    <button class="vkb-lang" id="vkbLang" title="Keyboard language">EN</button>
+    <span class="vkb-lbl">Virtual keyboard</span>
+    <button class="vkb-hide" id="vkbClose" title="Hide keyboard" aria-label="Hide keyboard">&#9662;</button>
+  </div>
+  <div class="vkb-rows" id="vkbRows"></div>
+</div>
+
+<script>
+  // Global error catch so that any module load/runtime failure is visible on screen.
+  window.addEventListener('error', function (e) {
+    var box = document.getElementById('errBox');
+    if (box) { box.style.display = 'block'; box.textContent = 'Error: ' + (e.message || 'module load failed'); }
+    var st = document.getElementById('status');
+    if (st) st.textContent = 'Failed to start';
+  });
+</script>
+<script type="module">
+  // NexDesk viewer — embeds noVNC RFB directly so we fully control fullscreen,
+  // responsive scaling and the control bar. The whole app runs under the secret
+  // path that served this page (derived from location), so no URL is hardcoded.
+
+  // The noVNC assets are fetched under a cache-busting key stamped into this
+  // page by the gateway (v__NOVNC_KEY__). A stale cached page may still point
+  // at an older key, and some browsers keep re-serving a cached 404 for a keyed
+  // module URL even across reloads - which used to force users to clear the
+  // whole cache. We therefore try the keyed URL first and fall back to the
+  // plain, unkeyed /novnc/core/rfb.js URL (always served fresh by the gateway),
+  // so the virtual screen connects for everyone without touching their cache.
+  let RFB = null;
+  let rfbLoading = null;
+  // Try each module URL in order and resolve with the first that loads. The
+  // keyed URL is normally enough; the plain unkeyed URL below is a different,
+  // fresh request that the gateway always answers, so it recovers users whose
+  // browser has cached a 404 for the keyed module path.
+  async function importFirst(urls){
+    let lastErr = null;
+    for(const u of urls){
+      try { return await import(u); } catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('no noVNC module loaded');
+  }
+  function loadRFB(){
+    if(RFB) return Promise.resolve(RFB);
+    if(!rfbLoading){
+      rfbLoading = importFirst(['/' + webpath + '/novnc/v__NOVNC_KEY__/core/rfb.js', '/' + webpath + '/novnc/core/rfb.js'])
+        .then((m) => {
+          RFB = m.default;
+          try{ sessionStorage.removeItem('nexdesk_novnc_retry'); }catch(e){}
+          return RFB;
+        })
+        .catch((err) => {
+          rfbLoading = null;
+          try{
+            if(!sessionStorage.getItem('nexdesk_novnc_retry')){
+              sessionStorage.setItem('nexdesk_novnc_retry', '1');
+              location.replace(location.pathname + location.search + '?v=' + Date.now());
+              return Promise.reject(err);
+            }
+          }catch(e){}
+          return Promise.reject(err);
+        });
+    }
+    return rfbLoading;
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const dot = $('dot'), statusEl = $('status'), overlay = $('overlay'),
+        errBox = $('errBox'), screen = $('screen');
+
+  const webpath = location.pathname.split('/').filter(Boolean)[0] || '';
+  // Root-relative links can't be written statically because the page may
+  // load at /<secret> with no trailing slash. Rewrite them under webpath.
+  for(const a of document.querySelectorAll('a[href="logout"]')) a.href = '/' + webpath + '/logout';
+  // Build the WebSocket endpoint under the same secret path.
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl = `${proto}://${location.host}/${webpath}/vnc`;
+
+  let rfb = null;
+  let fitMode = true;
+  // Touch detection guards every mobile-only behaviour (auto-hide bar, zoom,
+  // keyboard-aware screen height). Desktop paths never read it.
+  const IS_TOUCH = window.matchMedia('(hover: none), (max-width: 640px)').matches
+    || navigator.maxTouchPoints > 0
+    || ('ontouchstart' in window);
+  // On touch the top control bar is collapsed by default and is toggled by a
+  // floating side button, so it never pops up on its own while browsing.
+  if(IS_TOUCH) document.body.classList.add('touch-ui');
+
+  // ----- automatic reconnect on dropped links (self-healing) -----
+  // connectToken invalidates the event handlers of any RFB instance we replace,
+  // so a stale instance can never overwrite the state of a newer one.
+  let connectToken = 0;
+  let retryTimer = null;
+  let retryCount = 0;
+  let connected = false;
+  const RETRY_DELAYS = [1500, 2500, 4000, 6000, 8000];  // ms, growing backoff
+  function clearRetry(){ if(retryTimer){ clearTimeout(retryTimer); retryTimer = null; } }
+
+  // ----- connection quality (Auto adaptive + manual presets) -----
+  // noVNC's qualityLevel/compressLevel reach x11vnc through a live
+  // SetEncodings re-negotiation, which switches its Tight/JPEG compression on
+  // the spot — no reconnect needed. Presets are intentionally far apart so the
+  // difference between High and Low is obvious and visibly lowers the data sent
+  // to the viewer (important on weak networks).
+  const PRESETS = { high:{q:9,c:1}, balanced:{q:6,c:4}, low:{q:2,c:8} };
+  const QUALITY_NOTE = {
+    high: 'sharpest image and most detail — uses more data',
+    balanced: 'a good balance of sharpness and data',
+    low: 'smooth on weak networks — sends the least data'
+  };
+  const qSel = $('qualitySel'), qInfo = $('qinfo');
+  let qualityMode = 'auto';
+  let lastModeApplied = null;
+  // ---- adaptive engine state (Auto mode) ----
+  // (qualityLevel, compressLevel) pairs along the continuous 2..9 scale that
+  // Auto walks up and down; the manual presets reuse the same extremes.
+  const QC = { 2:[2,9], 3:[3,8], 4:[4,7], 5:[5,6], 6:[6,4], 7:[7,3], 8:[8,2], 9:[9,1] };
+  const AUTO_DEFAULT_Q = 6;
+  let autoQ = AUTO_DEFAULT_Q;      // current Auto quality level 2..9
+  let downAt = 0;                  // last time Auto cut quality (restore cooldown)
+  let lastPair = null;             // last {q,c} actually sent to noVNC (avoid churn)
+  let m = { b:0, p:0, r:0, j:0, cg:false, have:false };  // smoothed live metrics
+  // Asymmetric smoothing: react fast to a worsening signal, slow to an improving
+  // one — so Auto cuts quality the instant the link struggles and only restores
+  // it once the connection has stayed comfortably healthy for a while.
+  function mix(prev, raw, higherIsWorse){
+    const worse = higherIsWorse ? raw > prev : raw < prev;
+    const a = worse ? 0.6 : 0.22;
+    return a * raw + (1 - a) * prev;
+  }
+  function applyPair(q, c){
+    if (lastPair && lastPair.q === q && lastPair.c === c) return;  // only on a real change
+    lastPair = { q, c };
+    if (!rfb) return;
+    try { rfb.qualityLevel = q; } catch (e) {}
+    try { rfb.compressLevel = c; } catch (e) {}
+  }
+  function modeWord(){
+    return qualityMode === 'auto' ? 'Auto' : qualityMode.charAt(0).toUpperCase() + qualityMode.slice(1);
+  }
+  function renderQ(){
+    const q = lastPair && lastPair.q != null ? 'Q' + lastPair.q : '–';
+    const warn = m.cg;
+    qInfo.textContent = modeWord() + ' · ' + q + ' · ' + Math.round(m.b) + ' kbps' + (warn ? ' · ⚠' : '');
+    qInfo.title = 'Live link — ' + q + ' · ~' + Math.round(m.p) + '→' + Math.round(m.b) + ' kbps · '
+      + Math.round(m.r) + ' ms · jitter ' + Math.round(m.j) + ' ms' + (warn ? ' · congested' : '');
+    qInfo.classList.toggle('warn', !!warn);
+  }
+  // Auto control loop: driven every ~1 s from the gateway's precise link metrics.
+  function driveAuto(){
+    const now = Date.now();
+    // Strong congestion (real bottleneck) -> cut hard, immediately.
+    if (m.cg || m.r > 360 || m.j > 100) {
+      autoQ = 3; downAt = now;
+    } else if (m.have && m.p > 120) {
+      // Screen is actively changing -> budget by what was *delivered* (the
+      // sustainable receive rate), capped further when latency/jitter is high.
+      let t = m.b >= 4200 ? 9 : m.b >= 2600 ? 8 : m.b >= 1500 ? 7 : m.b >= 850 ? 6
+             : m.b >= 450 ? 5 : m.b >= 200 ? 4 : 3;
+      if (m.r > 300) t = Math.min(t, 3);
+      else if (m.r > 220) t = Math.min(t, 4);
+      else if (m.r > 160) t = Math.min(t, 5);
+      if (m.j > 90) t = Math.min(t, 3);
+      else if (m.j > 60) t = Math.min(t, 4);
+      if (t < autoQ) { autoQ = t; downAt = now; }                                  // drop fast
+      else if (t > autoQ && now - downAt > 8000) autoQ = Math.min(t, autoQ + 1);   // restore slowly
+    }
+    // else idle (little being sent): hold the current level to avoid churn.
+    const pair = QC[Math.max(2, Math.min(9, autoQ))];
+    applyPair(pair[0], pair[1]);
+  }
+  async function linkTick(){
+    // Always read the live metrics (even in a manual mode) so the viewer shows
+    // the real effect of a quality choice on the data actually flowing to it.
+    try{
+      const r = await fetch(location.origin + '/' + webpath + '/api/link',
+        { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if(!r.ok) return;
+      const d = await r.json();
+      if(!d || !d.ok) return;
+      const b = +d.deliveredKbps || 0;   // what the client truly received
+      const p = +d.producedKbps || 0;    // what the gateway is sending
+      const rr = +d.rttMs || 0;
+      const jj = +d.jitterMs || 0;
+      const cg = !!d.congested;
+      if (!m.have){ m = { b, p, r: rr, j: jj, cg, have:true }; }
+      else {
+        m.b = mix(m.b, b, false);         // delivered: higher is better
+        m.p = 0.4 * p + 0.6 * m.p;
+        m.r = mix(m.r, rr, true);         // latency: higher is worse
+        m.j = mix(m.j, jj, true);
+        m.cg = cg;
+      }
+      if (qualityMode === 'auto') driveAuto();
+    }catch(e){}
+    renderQ();
+  }
+  function toast(msg, ms){
+    const t = $('toast');
+    if(!t) return;
+    t.innerHTML = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove('show'), ms || 3200);
+  }
+  function setQualityMode(mode){
+    const notify = mode !== lastModeApplied;
+    lastModeApplied = mode;
+    qualityMode = mode;
+    m.have = false;
+    try { localStorage.setItem('nexdesk_quality', mode); } catch(e){}
+    if (PRESETS[mode]) {
+      const p = PRESETS[mode];
+      applyPair(p.q, p.c);
+      if (notify) {
+        const name = mode.charAt(0).toUpperCase() + mode.slice(1);
+        toast('<b>Quality: ' + name + '</b><span class="upd">' + QUALITY_NOTE[mode] + '</span>', 3600);
+      }
+    } else if (mode === 'auto') {
+      // Apply whatever Auto currently believes is right (fresh connect default).
+      const pair = QC[Math.max(2, Math.min(9, autoQ))];
+      applyPair(pair[0], pair[1]);
+    }
+    renderQ();
+  }
+  qSel.addEventListener('change', () => setQualityMode(qSel.value));
+  setInterval(linkTick, 1000);
+
+  // ----- auto-update: always deliver the latest build -----
+  // The gateway reports which build is running. On each visit we sample it once;
+  // if a later poll returns a different (newer) build, the page reloads itself
+  // so the visitor always sees the newest version without ever clearing their
+  // browser cache. HTML/JS are served no-store, so the reload fetches fresh.
+  let loadedVersion = null;
+  let sawUpdate = false;
+  async function watchVersion(){
+    if(sawUpdate) return;
+    let cur = null;
+    try{
+      const r = await fetch(location.origin + '/' + webpath + '/api/version',
+        { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if(r.ok){ const d = await r.json(); if(d && d.ok) cur = d.version; }
+    }catch(e){ return; }
+    if(!cur) return;
+    if(loadedVersion == null){ loadedVersion = cur; return; }
+    if(cur !== loadedVersion){
+      sawUpdate = true;
+      toast('A newer version of NexDesk is now live.<span class="upd">Updating automatically…</span>', 4000);
+      setTimeout(() => { try { location.reload(); } catch(e){} }, 1200);
+    }
+  }
+  setTimeout(watchVersion, 3000);
+  setInterval(watchVersion, 12000);
+
+  // Never forward Caps Lock to the virtual desktop. Toggling it on your OS
+  // already flips letter case inside the character (keysym) we send, so keeping
+  // the remote's Caps Lock off prevents its lock state from drifting out of
+  // sync and corrupting case later on.
+  window.addEventListener('keydown', function (e) { if (e.code === 'CapsLock') { e.preventDefault(); e.stopPropagation(); } }, true);
+  window.addEventListener('keyup',   function (e) { if (e.code === 'CapsLock') { e.preventDefault(); e.stopPropagation(); } }, true);
+
+  // Return keyboard focus to the virtual desktop so keystrokes keep reaching it
+  // (a control-button click would otherwise leave focus on that button).
+  function focusRemote(){
+    if(rfb){ try { rfb.focus(); } catch(e){} }
+  }
+
+  // ----- status helpers -----
+  function setState(mode, text){
+    dot.className = 'dot ' + mode;              // connecting | connected | off
+    statusEl.textContent = text;
+    if(mode === 'connected') overlay.classList.add('hidden');
+    else overlay.classList.remove('hidden');
+  }
+  function showError(msg){
+    errBox.style.display = 'block';
+    errBox.textContent = msg;
+    setState('off', 'Connection failed');
+  }
+
+  // ----- device-fit: reshape the shared desktop to this screen -----
+  // The virtual desktop is fixed at the aspect it was started with, so when the
+  // current window's aspect differs (wide desktop, landscape phone) whole-fit
+  // leaves the browser small with empty bars around it. We ask the gateway to
+  // rebuild the desktop at a resolution whose aspect matches this window, so
+  // the remote fills the space edge to edge. Runs for every device on first
+  // connect and again when the window is rotated or resized into a clearly
+  // different shape. Resizing rebuilds the desktop (dropping the session
+  // briefly, then auto-reconnecting), so a cooldown keeps rapid drag-resizing
+  // from causing churn while still catching real shape changes.
+  let alignLast = '';      // "WxH" of the resolution we last asked for
+  let alignAt = 0;         // timestamp of the last resize request
+  const ALIGN_COOLDOWN = 15000; // gateway refuses resizes ~12s apart; add margin
+  function alignReq(reason, delay){
+    clearTimeout(alignReq._t);
+    alignReq._t = setTimeout(() => { tryDoAlign(reason); }, delay || 0);
+  }
+  function scheduleAlign(reason){ alignReq(reason, 0); }
+  function scheduleAlignDebounced(reason){ alignReq(reason, 800); }
+  // The desktop is shared across every connected device, so auto-aligning on
+  // EVERY connect/reconnect makes two simultaneous devices fight over the
+  // shape (each reshape rebuilds the desktop and drops the other's session,
+  // which on reconnect would reshape again — an endless disconnect loop).
+  // Instead we align only once per page load (first connect) and on explicit
+  // user-driven changes: rotate, resize, or toggling fullscreen.
+  let alignInitial = false;   // first per-load alignment already requested
+  function alignOnFirstConnect(){
+    if(alignInitial) return;
+    alignInitial = true;
+    scheduleAlign('first');
+  }
+
+  // ----- manual virtual-page size (bigger / smaller elements) -----
+  // device-fit sizes the remote desktop to fill the screen; this lets the user
+  // over-ride that with a multiplier. sizeMul>1 builds a higher-resolution
+  // desktop, so once it is fitted to the screen every element is drawn smaller
+  // (more fits) — the fix for pages whose elements look too large, e.g. on a
+  // phone in landscape. sizeMul<1 draws them larger (capped by the MIN bounds).
+  // The chosen step is kept in localStorage and is also fed into every auto
+  // align (rotate / fullscreen) so a manual choice is never undone by one.
+  const SIZE_OPTS = [0.6, 0.8, 1.0, 1.3, 1.7, 2.2, 2.8];
+  const SIZE_LBL   = ['Extra big', 'Big', 'Fit (recommended)', 'Small', 'Smaller', 'Smallest', 'Tiny'];
+  const SIZE_NOTE = [
+    'elements drawn extra large',
+    'elements drawn larger than normal',
+    'matches your screen exactly',
+    'elements drawn a bit smaller',
+    'elements smaller — more fits on screen',
+    'elements much smaller',
+    'smallest — the most fits on screen'
+  ];
+  let sizeStep = 2;                       // default index 2 == "Fit"
+  try{ const v = parseInt(localStorage.getItem('nexdesk_size_step')); if(v>=0 && v<SIZE_OPTS.length) sizeStep = v; }catch(e){}
+  function sizeMul(){ return SIZE_OPTS[sizeStep]; }
+  function sizeLabel(){ return SIZE_LBL[sizeStep]; }
+  // While a desktop rebuild is in flight the +/− (bigger/smaller) buttons are
+  // locked so a rapid second press cannot fire a second rebuild before the first
+  // finishes. They unlock the moment the rebuilt screen reconnects (and always
+  // after a safety timeout, so they can never be left disabled).
+  let resizeBusy = false;
+  let resizeUnlockTimer = null;
+  function setResizeBusy(v){
+    resizeBusy = !!v;
+    clearTimeout(resizeUnlockTimer);
+    const _bs = [];
+    if(btnScrIn) _bs.push(btnScrIn);
+    if(btnScrOut) _bs.push(btnScrOut);
+    for(const b of _bs){ b.disabled = resizeBusy; b.classList.toggle('locked', resizeBusy); }
+    if(resizeBusy){ resizeUnlockTimer = setTimeout(() => setResizeBusy(false), 25000); }
+  }
+  // A real +/− change (and any auto-align) stays locked through reconnect with a
+  // short settle, so a fast/transient reconnect cannot drop the lock while the
+  // new desktop size is still being applied (mobile reconnects in particular are
+  // quick). The 25s safety below still caps everything.
+  let lastResizeReq = 0;
+  const RESIZE_SETTLE_MS = 2500;
+  function unlockAfterSettle(){
+    const left = lastResizeReq ? RESIZE_SETTLE_MS - (Date.now() - lastResizeReq) : 0;
+    if(left > 0){ resizeUnlockTimer = setTimeout(unlockAfterSettle, left); return; }
+    setResizeBusy(false);
+  }
+  function changeSize(dir){               // +1 = smaller content · −1 = bigger content
+    if(resizeBusy){
+      toast('<b>Still adjusting the screen…</b><span class="upd">wait a moment, then try again.</span>', 2200);
+      return;
+    }
+    let n = sizeStep + dir;
+    if(n < 0) n = 0;
+    if(n >= SIZE_OPTS.length) n = SIZE_OPTS.length - 1;
+    if(n === sizeStep){
+      toast('<b>Virtual page: ' + sizeLabel() + '</b><span class="upd">' + (dir > 0 ? 'Already the smallest.' : 'Already the largest.') + '</span>', 2200);
+      return;
+    }
+    // Lock the +/− buttons the instant this press is a real change, not when
+    // the screen later drops into the reconnect phase, so a rapid second press
+    // is blocked from the very start.
+    setResizeBusy(true);
+    lastResizeReq = Date.now();
+    sizeStep = n;
+    try{ localStorage.setItem('nexdesk_size_step', String(sizeStep)); }catch(e){}
+    // Rebuilding the virtual screen drops the session briefly and reconnects.
+    toast('<b>Virtual page: ' + sizeLabel() + '</b><span class="upd">' + SIZE_NOTE[n] + ' — adjusting…</span>', 2600);
+    scheduleAlign('size');
+  }
+  const btnScrIn = $('btnScrIn'), btnScrOut = $('btnScrOut');
+  if(btnScrIn)  btnScrIn.addEventListener('click',  (e)=>{ e.stopPropagation(); changeSize(-1); setTimeout(focusRemote, 60); });
+  if(btnScrOut) btnScrOut.addEventListener('click', (e)=>{ e.stopPropagation(); changeSize(+1); setTimeout(focusRemote, 60); });
+
+  function computeTarget(){
+    if(!screen || !screen.clientWidth || !screen.clientHeight) return null;
+    const cw = screen.clientWidth, ch = screen.clientHeight;
+    if(cw < 200 || ch < 100) return null;
+    const a = cw / ch;
+    const MINW = 720, MAXW = 2600, MINH = 360, MAXH = 1800;
+    // Prefer filling the width, then keep the height paired so the aspect is
+    // preserved inside the allowed resolution range. The user-chosen size step
+    // (sizeMul) scales the base fit resolution: a higher resolution means each
+    // element is drawn smaller once the whole desktop is fitted to the screen;
+    // a lower one (only down to the MIN floors) draws them larger.
+    const mul = sizeMul();
+    let w = Math.round(cw * mul);
+    let h = Math.round(w / a);
+    if(h < MINH || h > MAXH){ h = Math.min(Math.max(h, MINH), MAXH); w = Math.round(h * a); }
+    if(w < MINW || w > MAXW){ w = Math.min(Math.max(w, MINW), MAXW); h = Math.round(w / a); }
+    w = Math.min(Math.max(Math.round(w / 2) * 2, MINW), MAXW);
+    h = Math.min(Math.max(Math.round(h / 2) * 2, MINH), MAXH);
+    if(w < 2 || h < 2) return null;
+    return { w: w, h: h };
+  }
+  function tryDoAlign(reason){
+    try{
+      const t = computeTarget();
+      if(!t){ setResizeBusy(false); return; }
+      const key = t.w + 'x' + t.h;
+      const now = Date.now();
+      // Already asked for exactly this and it is recent — nothing to do.
+      if(key === alignLast && (now - alignAt) < 60000){ setResizeBusy(false); return; }
+      // Within the cooldown and the target differs: retry once the cooldown
+      // has passed rather than hammering the rebuild.
+      if(now - alignAt < ALIGN_COOLDOWN){
+        const wait = ALIGN_COOLDOWN - (now - alignAt) + 500;
+        alignReq('retry', wait);
+        return;
+      }
+      alignLast = key; alignAt = now;
+      lastResizeReq = Date.now();
+      setResizeBusy(true);   // lock the +/− buttons for the whole rebuild
+      fetch(location.origin + '/' + webpath + '/api/resize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ w: t.w, h: t.h })
+      }).then((r) => r.json()).then((j) => {
+        if(j && j.ok && j.changed){
+          // Desktop is being rebuilt; our link drops and the self-healing
+          // reconnect lands on the newly-sized screen.
+          overlay.classList.remove('hidden');
+          setState('connecting', 'Adjusting screen for this device…');
+        } else {
+          setResizeBusy(false);   // nothing is rebuilding — free the buttons
+        }
+      }).catch(() => { setResizeBusy(false); });
+    }catch(e){}
+  }
+
+  // ----- connect -----
+  // manual=true clears the backoff counter (fresh attempt from a button);
+  // manual=false is used by the automatic reconnector so backoff keeps growing.
+  function connect(manual){
+    if(!RFB){
+      // Engine not loaded yet (fresh page, or a stale cached copy retried
+      // through loadRFB's silent reload) — load it, then connect.
+      loadRFB().then(() => connect(manual)).catch(() => {
+        showError('Viewer engine failed to load — please refresh the page.');
+      });
+      return;
+    }
+    clearRetry();
+    if(manual !== false) retryCount = 0;
+    errBox.style.display = 'none';
+    overlay.classList.remove('hidden');
+    setState('connecting', 'Connecting');
+    if(rfb){ try{ rfb.disconnect(); }catch(e){} rfb = null; }
+    connectToken++;
+    const tok = connectToken;
+    try{
+      rfb = new RFB(screen, wsUrl, { credentials:{} });
+    }catch(err){
+      return showError('Could not start viewer: ' + err.message);
+    }
+    rfb.scaleViewport = fitMode;
+    if(IS_TOUCH){
+      // Restore the mobile zoom state (1:1 + pan, or fit-width) on reconnect.
+      try{ rfb.clipViewport = mobZoomed; }catch(e){}
+      try{ rfb.dragViewport = mobZoomed; }catch(e){}
+    }
+    rfb.addEventListener('clipboard', (e) => {
+      if(tok !== connectToken) return;
+      const t = e.detail && e.detail.text;
+      if(t !== undefined && t !== null && t !== ''){
+        clipText.value = t;
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).catch(function(){}); } } catch (e2) {}
+        clipMsg('Text received from the virtual desktop.');
+      }
+    });
+    rfb.addEventListener('connect', () => {
+      if(tok !== connectToken) return;
+      connected = true; retryCount = 0;
+      setState('connected', 'Connected'); focusRemote(); setQualityMode(qualityMode);
+      unlockAfterSettle();   // rebuild finished — re-enable +/− (after a short settle)
+      if(IS_TOUCH){ vkShowFab(); mouseShowPill(); vkMaybeAutoOpen(); barTabSync(); showFirstBarHint(); }
+      alignOnFirstConnect();
+    });
+    rfb.addEventListener('disconnect', () => {
+      if(tok !== connectToken) return;
+      connected = false; rfb = null; vkHideFab(); mouseOnDisconnect(); barTabSync();
+      // This viewer has no "disconnect" action, so ANY drop on a live tab is
+      // unexpected — whether the network blipped or the gateway closed the
+      // session (which the browser reports as a clean close). Self-heal in
+      // every case while the page is visible.
+      if(document.visibilityState !== 'hidden' && retryCount < RETRY_DELAYS.length){
+        const delay = RETRY_DELAYS[retryCount++];
+        setState('connecting', 'Reconnecting… (' + retryCount + '/' + RETRY_DELAYS.length + ')');
+        errBox.style.display = 'block';
+        errBox.textContent = 'Connection dropped — retrying automatically.';
+        retryTimer = setTimeout(() => connect(false), delay);
+      } else {
+        showError('Connection lost — press Retry to reconnect.');
+      }
+    });
+    rfb.addEventListener('credentialsrequired', () => {
+      // noVNC talks straight to x11vnc (no password) — should not happen.
+    });
+  }
+  // If the tab was hidden during a drop (no auto-retry ran), reconnect on return.
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && !connected && !retryTimer){
+      clearRetry();
+      if(retryCount < RETRY_DELAYS.length){ retryTimer = setTimeout(() => connect(false), 800); }
+      else connect(true);
+    }
+  });
+
+  // ----- fit / actual size -----
+  function toggleFit(){
+    fitMode = !fitMode;
+    if(rfb){ rfb.scaleViewport = fitMode; }
+    $('fitLbl').textContent = fitMode ? 'Fit' : '100%';
+    // recentre when at 100%
+    screen.scrollLeft = 0; screen.scrollTop = 0;
+  }
+
+  // ----- fullscreen -----
+  function toggleFull(){
+    const el = document.documentElement;
+    if(!document.fullscreenElement){
+      (el.requestFullscreen && el.requestFullscreen())
+        .catch(() => showError('Fullscreen is blocked by the browser.'));
+    } else {
+      document.exitFullscreen().catch(()=>{});
+    }
+  }
+
+  // ----- auto-hide controls: desktop (fullscreen only) + mobile (after 4s) -----
+  let hideTimer = null;
+  // Landscape keeps the slim top bar in normal flow above the virtual screen,
+  // so it never overlays the browser and the touch auto-hide is disabled there.
+  const mqLand = window.matchMedia('(orientation:landscape) and (max-height:560px)');
+  function applyLand(){
+    document.body.classList.toggle('landscape', mqLand.matches);
+    if(mqLand.matches){
+      const b = $('topbar');
+      if(b){ b.style.transform = ''; b.style.opacity = ''; b.style.pointerEvents = ''; }
+    }
+  }
+  applyLand();
+  function mHintShow(){
+    const h = $('mHint'); if(!h) return;
+    h.classList.add('show');
+    clearTimeout(mHintShow._t);
+    mHintShow._t = setTimeout(() => h.classList.remove('show'), 2600);
+  }
+  function scheduleHide(){ if(IS_TOUCH) return; clearTimeout(hideTimer); hideTimer = setTimeout(()=>{
+    if(document.hidden) return;
+    // Desktop, in true fullscreen only: the bar auto-hides after a pause.
+    if(document.fullscreenElement){
+      $('topbar').style.transform = 'translateY(-110%)';
+      $('topbar').style.opacity = '0';
+      $('topbar').style.pointerEvents = 'none';
+      $('hint').style.display = 'block';
+    }
+  }, 3500); }
+  function showControls(){ if(IS_TOUCH) return; clearTimeout(hideTimer);
+    $('topbar').style.transform = 'none'; $('topbar').style.opacity = '1'; $('topbar').style.pointerEvents = 'auto';
+    $('hint').style.display = 'none';
+    const h = $('mHint'); if(h) h.classList.remove('show');
+  }
+  // ----- mobile: reveal / collapse the control bar via the side button -----
+  // On touch the bar stays collapsed by default. Tapping the floating button
+  // opens it (as a top overlay) and tapping again closes it — browsing taps
+  // never pop it up on their own.
+  function setBarOpen(open){
+    document.body.classList.toggle('bar-open', !!open);
+    const t = $('barTab');
+    if(t) t.title = open ? 'Hide the control bar' : 'Show the control bar';
+  }
+  function toggleBar(){ setBarOpen(!document.body.classList.contains('bar-open')); }
+  function barTabSync(){
+    const t = $('barTab'); if(!t) return;
+    // On touch the side button is always available so the control bar is one tap
+    // away; before the remote connects it simply sits over the loading panel.
+    if(IS_TOUCH){ t.style.display = 'flex'; } else { t.style.display = 'none'; setBarOpen(false); }
+  }
+  function showFirstBarHint(){
+    let seen = false;
+    try{ seen = localStorage.getItem('nexdesk_ctrl_hint') === '1'; }catch(e){}
+    if(seen) return;
+    try{ localStorage.setItem('nexdesk_ctrl_hint', '1'); }catch(e){}
+    setTimeout(() => toast('<b>Control bar</b><span class="upd">Tap the button on the side to show or hide it.</span>', 4200), 700);
+  }
+  const barTab = $('barTab');
+  if(barTab){ barTab.addEventListener('click', (e)=>{ e.stopPropagation(); toggleBar(); setTimeout(focusRemote, 60); }); }
+  if(IS_TOUCH){ barTabSync(); }   // show the side toggle immediately on touch
+  if(!IS_TOUCH){
+    document.addEventListener('pointermove', () => { showControls(); scheduleHide(); });
+    document.addEventListener('pointerdown', showControls);
+  }
+  screen.addEventListener('pointermove', () => {}); // keep screen active
+
+  // ----- mobile screen: fit-width by default; double-tap toggles actual-size
+  // (1:1) with drag-to-pan. Uses noVNC's own clip/drag support (present on the
+  // installed 1.3 build). Pinching inside the canvas still zooms the page inside
+  // the virtual browser (noVNC sends Ctrl+wheel). The Fit control lives in the
+  // top control bar, so no floating zoom button is shown.
+  const kbdFab = $('kbdFab');
+  let mobZoomed = false;
+  function setMobZoom(z){
+    mobZoomed = z;
+    fitMode = !z;                      // keep fitMode in sync with resize handlers
+    if(!rfb) return;
+    try{ rfb.scaleViewport = fitMode; }catch(e){}
+    try{ rfb.clipViewport = z; }catch(e){}
+    try{ rfb.dragViewport = z; }catch(e){}
+    if(!z){ try{ screen.scrollLeft = 0; screen.scrollTop = 0; }catch(e){} }
+  }
+  function toggleMobZoom(){
+    setMobZoom(!mobZoomed);
+    toast(mobZoomed
+      ? '<b>Actual size</b><span class="upd">Drag to move around · double-tap to fit</span>'
+      : '<b>Fit to screen</b><span class="upd">Double-tap to zoom in</span>', 2000);
+    setTimeout(focusRemote, 60);
+  }
+  // Floating keyboard button: shown while connected on touch; opening the
+  // keyboard hides it (the panel has its own close arrow), closing brings it back.
+  function vkShowFab(){ if(kbdFab && IS_TOUCH && connected) kbdFab.style.display = 'flex'; }
+  function vkHideFab(){ if(kbdFab) kbdFab.style.display = 'none'; }
+  if(kbdFab) kbdFab.addEventListener('click', (e)=>{ e.stopPropagation(); vkOpenPanel(); setTimeout(focusRemote, 60); });
+  if(IS_TOUCH){
+    // Single tap on the virtual screen opens the on-screen keyboard (the tap
+    // itself still reaches the remote as a click); a double-tap toggles the
+    // 1:1 zoom; dragging pans/scrolls without ever showing the keyboard.
+    let lastTapT = 0, lastTapX = 0, lastTapY = 0, tsX = 0, tsY = 0, tsId = 0;
+    screen.addEventListener('touchstart', (e)=>{
+      const t = e.changedTouches[0];
+      tsId = t.identifier; tsX = t.clientX; tsY = t.clientY;
+    }, { passive:true });
+    screen.addEventListener('touchend', (e)=>{
+      if(!connected || e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0], now = Date.now();
+      if(t.identifier !== tsId) return;
+      if(Math.hypot(t.clientX - tsX, t.clientY - tsY) > 10){ lastTapT = 0; return; }
+      if(now - lastTapT < 300 && Math.abs(t.clientX - lastTapX) < 40 && Math.abs(t.clientY - lastTapY) < 40){
+        lastTapT = 0; toggleMobZoom();
+      } else {
+        lastTapT = now; lastTapX = t.clientX; lastTapY = t.clientY;
+        if(!vkOpen) vkOpenPanel();
+      }
+    }, { passive:true });
+  }
+
+  // ----- wire up -----
+  $('btnFull').addEventListener('click', () => { toggleFull(); setTimeout(focusRemote, 60); });
+  $('btnFit').addEventListener('click', () => { toggleFit(); focusRemote(); });
+  $('btnRefresh').addEventListener('click', () => connect());
+  $('btnRetry').addEventListener('click', () => connect());
+  // ----- clipboard bridge (device <-> virtual desktop) -----
+  const clipPanel = $('clipPanel'), clipText = $('clipText'), clipStatus = $('clipStatus');
+  function clipMsg(m, isErr){
+    clipStatus.textContent = m;
+    clipStatus.className = 'clip-status ' + (isErr ? 'err' : 'ok');
+    clearTimeout(clipMsg._t);
+    clipMsg._t = setTimeout(() => { clipStatus.textContent = ''; }, 6000);
+  }
+  async function copyToDevice(){
+    const txt = clipText.value;
+    if(!txt){ clipMsg('Nothing to copy yet — copy text inside the virtual browser, or type it here first.', true); return; }
+    let done = false;
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(txt); done = true;
+      }
+    } catch(e){ done = false; }
+    if(!done){
+      // Reliable fallback that works even when the async Clipboard API is
+      // blocked in this browser context (needs a real focusable element).
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt; ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;border:0;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+        done = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch(e){ done = false; }
+    }
+    clipMsg(done ? 'Copied to your computer — paste anywhere with Ctrl+V.'
+      : 'The browser blocked automatic copying. Please select the text with your mouse, then press Ctrl+C on your computer.', true);
+  }
+  async function pasteToDesktop(){
+    if(!rfb){ clipMsg('Not connected yet.', true); return; }
+    let txt = clipText.value;
+    if(!txt){ clipMsg('Type or paste text into the box above first.', true); return; }
+    clipText.value = txt;
+    clipMsg('Sending to the virtual desktop…');
+    // 1) place the text on the desktop's own X clipboard via the gateway,
+    //    falling back to noVNC's clipboard message if the endpoint is unreachable
+    let ok = false;
+    try {
+      const url = location.origin + '/' + webpath + '/clipboard';
+      const r = await fetch(url, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: txt }) });
+      if (r.ok) { ok = true; } else { throw new Error('http ' + r.status); }
+    } catch (e) {
+      try { rfb.clipboardPasteFrom(txt); ok = true; } catch (e2) { ok = false; }
+    }
+    // 2) focus the virtual desktop field and press Ctrl+V so the text lands there
+    setTimeout(() => {
+      try {
+        rfb.sendKey(0xFFE3, 'ControlLeft', true);
+        rfb.sendKey(0x76, 'KeyV', true);
+        rfb.sendKey(0x76, 'KeyV', false);
+        rfb.sendKey(0xFFE3, 'ControlLeft', false);
+        clipMsg(ok ? 'Pasted into the virtual desktop.' : 'Clipboard sent — press Ctrl+V in the virtual page.');
+      } catch (e) {
+        clipMsg(ok ? 'Clipboard sent — press Ctrl+V in the virtual page.' : 'Could not paste.', true);
+      }
+    }, 300);
+  }
+  function toggleClip(){
+    clipPanel.classList.toggle('hidden');
+  }
+  // If the visitor clicks away from the page while a Shift/Ctrl/Alt is still
+  // held, tell the virtual desktop to release it (prevents stuck capitals).
+  function releaseStuckKeys(){
+    if(!rfb) return;
+    const mods = [[0xFFE1,'ShiftLeft'],[0xFFE2,'ShiftRight'],[0xFFE3,'ControlLeft'],[0xFFE4,'ControlRight'],
+                  [0xFFE9,'AltLeft'],[0xFFEA,'AltRight'],[0xFFE7,'MetaLeft'],[0xFFE8,'MetaRight']];
+    for(const m of mods){ try { rfb.sendKey(m[0], m[1], false); } catch(e){} }
+  }
+  $('btnClip').addEventListener('click', toggleClip);
+  $('clipClose').addEventListener('click', () => clipPanel.classList.add('hidden'));
+  $('clipPaste').addEventListener('click', pasteToDesktop);
+  $('clipCopy').addEventListener('click', copyToDevice);
+  window.addEventListener('blur', releaseStuckKeys);
+  document.addEventListener('pointerdown', (ev) => {
+    if(clipPanel.classList.contains('hidden')) return;
+    if(clipPanel.contains(ev.target) || ev.target.id === 'btnClip') return;
+    clipPanel.classList.add('hidden');
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const fs = !!document.fullscreenElement;
+    document.body.classList.toggle('fs-ui', fs);
+    $('btnFull').innerHTML = fs
+      ? '<svg class="ic" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>'
+      : '<svg class="ic" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    if(fs){ scheduleHide(); } else { showControls(); }
+    // Fullscreen changes the available area (and hides the top bar), so after
+    // the browser finishes the transition re-fit and re-measure the desktop.
+    setTimeout(() => { applyLand(); if(rfb){ rfb.scaleViewport = fitMode; } scheduleAlign('fullscreen'); }, 350);
+  });
+
+  // RFB already observes its container internally; on window resize we
+  // nudge it so Fit (scaleViewport) follows the new container size.
+  window.addEventListener('resize', () => { if(rfb){ rfb.scaleViewport = fitMode; } if(IS_TOUCH) vkSyncHeight(); applyLand(); scheduleAlignDebounced('resize'); });
+  window.addEventListener('orientationchange', () => setTimeout(()=> { if(rfb){ rfb.scaleViewport = fitMode; } if(IS_TOUCH){ vkSyncHeight(); vkMaybeAutoOpen(); } applyLand(); scheduleAlign('orient'); }, 300));
+  // If the browser restores this page from its back/forward cache after a
+  // deploy, the restored copy may reference stale noVNC assets — reload once
+  // so it always matches the current server state.
+  window.addEventListener('pageshow', (ev) => {
+    if(ev.persisted && !connected && !rfb){
+      try{ location.reload(); }catch(e){}
+    }
+  });
+
+  // ----- resource meter (host CPU / RAM) -----
+  const cpuFill = $('cpuFill'), cpuVal = $('cpuVal');
+  const ramFill = $('ramFill'), ramVal = $('ramVal');
+  function gaugeVal(fill, valEl, val, max, format){
+    const r = max > 0 ? Math.min(1, Math.max(0, val / max)) : 0;
+    fill.style.width = (r * 100) + '%';
+    fill.style.background = r < 0.6 ? 'var(--ok)' : r < 0.85 ? 'var(--warn)' : 'var(--err)';
+    valEl.textContent = format(val, max);
+  }
+  function fmtCpu(v){ return Math.round(v) + '%'; }
+  function fmtRam(usedMB, totalMB){
+    if(totalMB >= 1024) return (usedMB/1024).toFixed(2) + '/' + (totalMB/1024).toFixed(1) + 'G';
+    return Math.round(usedMB) + '/' + totalMB + 'M';
+  }
+  async function refreshStats(){
+    try{
+      const url = location.origin + '/' + webpath + '/api/stats';
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+      if(!r.ok) return;
+      const d = await r.json();
+      if(!d || !d.ok) return;
+      gaugeVal(cpuFill, cpuVal, d.cpu, 100, fmtCpu);
+      gaugeVal(ramFill, ramVal, d.memMB.used, d.memMB.total, fmtRam);
+    }catch(e){ /* keep last known values */ }
+  }
+  setInterval(refreshStats, 2000);
+  refreshStats();
+
+  // Restore the visitor's last quality choice (persisted in their browser) so
+  // it survives page reloads, cache refreshes and reconnects.
+  try {
+    const saved = localStorage.getItem('nexdesk_quality');
+    if(saved && (saved === 'auto' || PRESETS[saved])){ qualityMode = saved; qSel.value = saved; }
+  } catch(e){}
+
+  // ==========================================================================
+  // My Files — upload a file from the visitor's computer into the virtual
+  // browser. Files land in /home/nexdesk/MyFiles on the desktop, so the same
+  // folder also shows up inside the virtual browser's own file picker.
+  // ==========================================================================
+  const filesPanel = $('filesPanel'), fileInput = $('fileInput'), dzEl = $('dz'),
+        upList = $('upList'), fileGrid = $('fileGrid'), fileEmpty = $('fileEmpty');
+  const EXT_LABEL = { '.pdf':'PDF','.zip':'ZIP','.rar':'RAR','.7z':'7Z','.tar':'TAR','.gz':'GZ','.doc':'DOC','.docx':'DOCX',
+                      '.xls':'XLS','.xlsx':'XLSX','.ppt':'PPT','.pptx':'PPTX','.mp3':'MP3','.wav':'WAV','.mp4':'MP4','.webm':'WEBM',
+                      '.mov':'MOV','.txt':'TXT','.csv':'CSV','.md':'MD','.json':'JSON' };
+  function iconLabel(name){
+    const i = String(name).toLowerCase().lastIndexOf('.');
+    if (i < 0) return 'FILE';
+    const ext = String(name).slice(i).toLowerCase();
+    return EXT_LABEL[ext] || String(name).slice(i + 1).toUpperCase().slice(0, 4) || 'FILE';
+  }
+  function esc(s){ return String(s).replace(/[&<>"']/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  function fmtDate(ms){
+    try{ const d = new Date(ms);
+      return d.toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    }catch(e){ return ''; }
+  }
+  function apiUrl(path){ return location.origin + '/' + webpath + '/api' + path; }
+
+  function renderFileEmpty(count){
+    fileEmpty.style.display = count === 0 ? 'flex' : 'none';
+  }
+  function renderFiles(files){
+    fileGrid.innerHTML = '';
+    renderFileEmpty(files.length);
+    for (const f of files){
+      const item = document.createElement('div'); item.className = 'fitem';
+      const ic = document.createElement('div');
+      ic.className = 'ficon t-' + (f.type || 'file');
+      ic.textContent = iconLabel(f.name);
+      const meta = document.createElement('div'); meta.className = 'fmeta';
+      const nm = document.createElement('div'); nm.className = 'fname'; nm.textContent = f.name; nm.title = f.name;
+      const info = document.createElement('div'); info.className = 'finfo';
+      info.textContent = (f.sizeLabel || '') + (f.mtime ? '  ·  ' + fmtDate(f.mtime) : '');
+      const fromBrowser = (f.source === 'browser');
+      const src = document.createElement('div');
+      src.className = 'fsrc ' + (fromBrowser ? 'web' : 'mine');
+      src.textContent = fromBrowser
+        ? ('Downloaded' + (f.site ? ' from ' + f.site : ' in the virtual browser'))
+        : 'From my device';
+      src.title = src.textContent;
+      meta.appendChild(nm); meta.appendChild(info); meta.appendChild(src);
+      const acts = document.createElement('div'); acts.className = 'factions';
+      const dl = document.createElement('button'); dl.className = 'fbtn dl'; dl.title = 'Download';
+      dl.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>';
+      dl.addEventListener('click', (e)=>{ e.stopPropagation();
+        const a = document.createElement('a'); a.href = apiUrl('/files/' + encodeURIComponent(f.name) + '/download');
+        a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+      });
+      const del = document.createElement('button'); del.className = 'fbtn del'; del.title = 'Delete';
+      del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>';
+      del.addEventListener('click', async (e)=>{ e.stopPropagation();
+        if(!window.confirm('Delete “' + f.name + '”? This removes it from the virtual desktop.')) return;
+        try{
+          const r = await fetch(apiUrl('/files/' + encodeURIComponent(f.name)), { method:'DELETE', credentials:'same-origin' });
+          if(r.ok){ item.remove(); renderFileEmpty(fileGrid.children.length); loadFiles(); }
+          else toast('Could not delete the file.');
+        }catch(err){ toast('Delete failed.'); }
+      });
+      acts.appendChild(dl); acts.appendChild(del);
+      item.appendChild(ic); item.appendChild(meta); item.appendChild(acts);
+      fileGrid.appendChild(item);
+    }
+  }
+  async function loadFiles(){
+    try{
+      const r = await fetch(apiUrl('/files'), { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if(!r.ok) return;
+      const d = await r.json();
+      if(d && d.ok) renderFiles(d.files || []);
+    }catch(e){ /* silent: keep what we have */ }
+  }
+  function uploadOne(file){
+    const row = document.createElement('div'); row.className = 'up-item';
+    const name = document.createElement('div'); name.className = 'up-name'; name.textContent = file.name; name.title = file.name;
+    const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:none';
+    const bar = document.createElement('i'); bar.className = 'up-bar'; bar.innerHTML = '<b class="up-fill"></b>';
+    const fill = bar.firstChild;
+    const perc = document.createElement('span'); perc.className = 'up-perc'; perc.textContent = '0%';
+    const st = document.createElement('span'); st.className = 'up-status'; st.textContent = '';
+    wrap.appendChild(bar); wrap.appendChild(perc); wrap.appendChild(st);
+    row.appendChild(name); row.appendChild(wrap);
+    upList.prepend(row);
+    const xhr = new XMLHttpRequest();
+    try{
+      xhr.open('PUT', apiUrl('/files?name=' + encodeURIComponent(file.name)), true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.setRequestHeader('X-File-Name', file.name);
+    }catch(e){ row.classList.add('err'); st.textContent = 'Error'; return; }
+    xhr.upload.onprogress = (ev) => {
+      if(ev.lengthComputable){
+        const p = Math.min(100, Math.round(ev.loaded / ev.total * 100));
+        fill.style.width = p + '%'; perc.textContent = p + '%';
+      }
+    };
+    xhr.onload = () => {
+      if(xhr.status === 200){
+        row.classList.add('ok'); fill.style.width = '100%'; perc.textContent = '100%'; st.textContent = 'Done';
+        setTimeout(()=>{ if(row.parentNode) row.parentNode.removeChild(row); }, 1300);
+      } else {
+        row.classList.add('err'); st.textContent = 'Failed (' + xhr.status + ')';
+        try{ const d = JSON.parse(xhr.responseText); if(d && d.error) st.textContent = d.error; }catch(e){}
+      }
+      loadFiles();
+    };
+    xhr.onerror = () => { row.classList.add('err'); st.textContent = 'Network error'; };
+    xhr.onabort = () => { row.classList.add('err'); st.textContent = 'Cancelled'; };
+    xhr.send(file);
+  }
+  function handleFiles(list){
+    if(!list || !list.length) return;
+    for(const f of list) uploadOne(f);
+    try{ fileInput.value = ''; }catch(e){}
+  }
+  function setDz(over){ dzEl.classList.toggle('over', !!over); }
+  dzEl.addEventListener('click', () => fileInput.click());
+  dzEl.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+  ;['dragenter','dragover'].forEach(t => dzEl.addEventListener(t, (e)=>{ e.preventDefault(); setDz(true); }));
+  ;['dragleave','drop'].forEach(t => dzEl.addEventListener(t, (e)=>{ e.preventDefault(); setDz(false); }));
+  dzEl.addEventListener('drop', (e) => handleFiles(e.dataTransfer && e.dataTransfer.files));
+  $('flRefresh').addEventListener('click', loadFiles);
+
+  let filesOpen = false;
+  function toggleFiles(){
+    filesOpen = !filesOpen;
+    filesPanel.classList.toggle('hidden', !filesOpen);
+    if(filesOpen) loadFiles();
+    setTimeout(focusRemote, 60);
+  }
+  $('btnFiles').addEventListener('click', (e)=>{ e.stopPropagation(); toggleFiles(); });
+  $('filesClose').addEventListener('click', ()=>{ filesOpen=false; filesPanel.classList.add('hidden'); focusRemote(); });
+  document.addEventListener('pointerdown', (ev)=>{
+    if(!filesOpen) return;
+    if(filesPanel.contains(ev.target) || ev.target.id === 'btnFiles') return;
+    filesOpen = false; filesPanel.classList.add('hidden');
+  });
+
+  // ---- Live downloads from the virtual browser ----
+  // Anything the virtual browser saves is written into MyFiles, so it shows up in
+  // the list above like any other file. This part just makes it feel live: a
+  // progress row while Chrome is fetching, and one heads-up (plus a list refresh)
+  // the moment a new file has finished landing.
+  const dlWrap = $('dlWrap'), dlList = $('dlList');
+  let dlKnown = null, dlPolling = false;
+  function humanBytesLocal(b){
+    if (!Number.isFinite(b) || b < 0) return '–';
+    if (b < 1024) return b + ' B';
+    const u = ['KB','MB','GB','TB']; let v = b, i = -1;
+    do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
+    return (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10) + ' ' + u[i];
+  }
+  function dlSub(d){
+    if (d.state === 'canceled') return 'Download stopped';
+    if (d.state === 'completed') return 'Saved to My Files';
+    const parts = [];
+    if (d.site) parts.push(d.site);
+    parts.push(d.total ? humanBytesLocal(d.received) + ' of ' + humanBytesLocal(d.total)
+                       : humanBytesLocal(d.received));
+    return parts.join('  ·  ');
+  }
+  function renderDownloads(list){
+    const rows = list.filter((d)=> d.state === 'inProgress' || (Date.now() - d.at) < 9000);
+    if (!rows.length){ dlWrap.classList.add('hidden'); dlList.innerHTML = ''; return; }
+    dlWrap.classList.remove('hidden');
+    dlList.innerHTML = '';
+    for (const d of rows){
+      const item = document.createElement('div');
+      item.className = 'dl-item' + (d.state === 'completed' ? ' done' : (d.state === 'canceled' ? ' err' : ''));
+      const meta = document.createElement('div'); meta.className = 'dl-meta';
+      const nm = document.createElement('div'); nm.className = 'dl-name';
+      nm.textContent = d.name || 'download'; nm.title = d.name || '';
+      const sub = document.createElement('div'); sub.className = 'dl-sub'; sub.textContent = dlSub(d);
+      const bar = document.createElement('div'); bar.className = 'dl-bar';
+      const fill = document.createElement('i'); fill.className = 'dl-fill';
+      fill.style.width = (d.state === 'completed' ? 100 : (d.percent != null ? Math.max(3, d.percent) : 10)) + '%';
+      bar.appendChild(fill);
+      meta.appendChild(nm); meta.appendChild(sub); meta.appendChild(bar);
+      const pct = document.createElement('div'); pct.className = 'dl-pct';
+      pct.textContent = d.state === 'completed' ? 'Done'
+                      : (d.state === 'canceled' ? 'Stopped' : (d.percent != null ? d.percent + '%' : ''));
+      item.appendChild(meta); item.appendChild(pct);
+      dlList.appendChild(item);
+    }
+  }
+  async function pollDownloads(){
+    if (dlPolling) return; dlPolling = true;
+    try{
+      const r = await fetch(apiUrl('/downloads'), { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if (r.ok){
+        const d = await r.json();
+        const list = (d && d.downloads) || [];
+        renderDownloads(list);
+        const done = new Set(list.filter((x)=> x.state === 'completed').map((x)=> x.guid));
+        // The first pass only records what is already there, so simply opening the
+        // viewer never replays a toast for a download the visitor already knows about.
+        if (dlKnown){
+          const fresh = [...done].filter((g)=> !dlKnown.has(g));
+          if (fresh.length){
+            const it = list.find((x)=> x.guid === fresh[fresh.length - 1]);
+            if (it) toast('Downloaded' + (it.site ? ' from ' + it.site : '') + ': ' + it.name + ' — saved to My Files.');
+            if (filesOpen) loadFiles();
+            if (chooserActive) refreshChooserList();
+          }
+        }
+        dlKnown = done;
+      }
+    }catch(e){} finally{ dlPolling = false; }
+  }
+  setInterval(pollDownloads, 1500);
+  pollDownloads();
+
+  // ==========================================================================
+  // Upload-injection chooser — when a website inside the virtual browser asks
+  // for a file, we intercept Chrome's dialog (server-side) and instead let you
+  // pick an uploaded file or upload a new one. No Linux window ever opens.
+  // ==========================================================================
+  const chooser = $('chooser'), chooserList = $('chooserList'), chooserInput = $('chooserInput'),
+        chooserStatus = $('chooserStatus'), chooserCancel = $('chooserCancel'),
+        chooserUpload = $('chooserUpload'), chooserClose = $('chooserClose');
+  let chooserActive = false, chooserBusy = false, chooserRefreshing = false;
+
+  function chooserHide(){ chooser.classList.add('hidden'); chooserActive = false; }
+  function setChooserStatus(t){ if(chooserStatus) chooserStatus.textContent = t || ''; }
+
+  async function refreshChooserList(){
+    if (chooserRefreshing || !chooserActive) return;
+    chooserRefreshing = true;
+    try {
+      const r = await fetch(apiUrl('/files'), { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const files = (d && d.files) || [];
+      chooserList.innerHTML = '';
+      if (!files.length){
+        const e = document.createElement('div'); e.className = 'chooser-empty';
+        e.textContent = 'No files here yet — upload one above and it will be sent automatically.';
+        chooserList.appendChild(e); return;
+      }
+      for (const f of files){
+        const row = document.createElement('div'); row.className = 'chooser-row';
+        const ic = document.createElement('div'); ic.className = 'chooser-ic'; ic.textContent = iconLabel(f.name);
+        const meta = document.createElement('div'); meta.className = 'chooser-meta';
+        const fromBrowser = (f.source === 'browser');
+        const nm = document.createElement('div'); nm.className = 'chooser-nm';
+        nm.textContent = f.name; nm.title = f.name;
+        const tag = document.createElement('span');
+        tag.className = 'chooser-src ' + (fromBrowser ? 'web' : 'mine');
+        tag.textContent = fromBrowser ? 'from virtual browser' : 'from my device';
+        nm.appendChild(tag);
+        const sz = document.createElement('div'); sz.className = 'chooser-sz';
+        sz.textContent = (f.sizeLabel || '') + (fromBrowser && f.site ? '  ·  ' + f.site : '');
+        meta.appendChild(nm); meta.appendChild(sz);
+        const pick = document.createElement('button'); pick.className = 'chooser-pick'; pick.textContent = 'Send';
+        pick.addEventListener('click', async (ev) => { ev.stopPropagation(); await chooseForSite(f.name); });
+        row.appendChild(ic); row.appendChild(meta); row.appendChild(pick);
+        chooserList.appendChild(row);
+      }
+    } catch(e){} finally { chooserRefreshing = false; }
+  }
+  async function chooseForSite(name){
+    if (chooserBusy) return; chooserBusy = true;
+    setChooserStatus('Sending “' + name + '” into the site…');
+    try {
+      const r = await fetch(apiUrl('/chooser'), { method:'POST', credentials:'same-origin',
+        headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ action:'inject', file:name }) });
+      const d = await r.json().catch(()=>({}));
+      if (d && d.ok){ toast('File sent to the website.'); chooserHide(); }
+      else { setChooserStatus((d && d.error) || 'Could not send that file.'); refreshChooserList(); }
+    } catch(e){ setChooserStatus('Could not send that file.'); }
+    chooserBusy = false;
+  }
+  async function cancelChooser(){
+    chooserHide();
+    try { await fetch(apiUrl('/chooser'), { method:'POST', credentials:'same-origin',
+      headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ action:'cancel' }) }); } catch(e){}
+  }
+  function uploadToChooser(file){
+    if (!file || chooserBusy) return; chooserBusy = true;
+    setChooserStatus('Uploading “' + file.name + '”…');
+    const xhr = new XMLHttpRequest();
+    try {
+      xhr.open('PUT', apiUrl('/files?name=' + encodeURIComponent(file.name)), true);
+      xhr.setRequestHeader('Content-Type','application/octet-stream');
+      xhr.setRequestHeader('X-File-Name', file.name);
+    } catch(e){ setChooserStatus('Upload failed.'); chooserBusy = false; return; }
+    xhr.onload = async () => {
+      chooserBusy = false;
+      if (xhr.status === 200){ loadFiles(); await chooseForSite(file.name); refreshChooserList(); }
+      else { setChooserStatus('Upload failed (' + xhr.status + ').'); }
+    };
+    xhr.onerror = () => { chooserBusy = false; setChooserStatus('Upload failed — network error.'); };
+    xhr.send(file);
+  }
+  chooserUpload.addEventListener('click', () => chooserInput.click());
+  chooserInput.addEventListener('change', () => {
+    if (chooserInput.files && chooserInput.files.length) uploadToChooser(chooserInput.files[0]);
+    try{ chooserInput.value = ''; }catch(e){}
+  });
+  chooserCancel.addEventListener('click', cancelChooser);
+  chooserClose.addEventListener('click', cancelChooser);
+
+  async function pollChooser(){
+    try {
+      const r = await fetch(apiUrl('/chooser'), { headers:{ 'Accept':'application/json' }, credentials:'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.ok && d.pending){
+        const first = !chooserActive;
+        chooserActive = true;
+        chooser.classList.remove('hidden');
+        if (first) refreshChooserList();
+      } else if (chooserActive && !chooserBusy) {
+        chooserHide();
+      }
+    } catch(e){}
+  }
+  setInterval(pollChooser, 900);
+  pollChooser();
+
+  // ==========================================================================
+  // Live sound — stream the virtual browser's audio into this tab via Web Audio.
+  // ==========================================================================
+  const btnSound = $('btnSound');
+  let audioOn = true;
+  try{ audioOn = (localStorage.getItem('nexdesk_audio') || 'on') === 'on'; }catch(e){}
+  let actx = null, audioWs = null, aNode = null, ringCap = 0, ring = null,
+      ringWrite = 0, ringRead = 0, ringCount = 0, aCfg = null, aTimer = null, audioWsGen = 0;
+  function renderSoundBtn(){
+    btnSound.classList.toggle('snd-on', audioOn);
+    btnSound.classList.toggle('snd-off', !audioOn);
+    btnSound.title = audioOn ? 'Virtual browser sound: on' : 'Virtual browser sound: off';
+  }
+  renderSoundBtn();
+  function ensureCtx(){
+    if(actx) return actx;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    try{ actx = new AC(); }catch(e){ return null; }
+    return actx;
+  }
+  function stopAudio(why){
+    audioWsGen++;                     // invalidate any in-flight/reconnecting socket
+    if(aTimer){ clearTimeout(aTimer); aTimer = null; }
+    if(audioWs){ try{ audioWs.onclose = null; audioWs.close(); }catch(e){} audioWs = null; }
+    if(aNode){ try{ aNode.disconnect(); }catch(e){} aNode = null; }
+    if(actx){ try{ if(actx.state !== 'closed') actx.close(); }catch(e){} actx = null; }
+    ring = null; ringWrite = 0; ringRead = 0; ringCount = 0; ringCap = 0; aCfg = null;
+  }
+  function pushPCM(buf){
+    if(!aCfg || !ring) return;
+    const i16 = new Int16Array(buf);
+    const ch = aCfg.channels || 1;
+    const frames = Math.floor(i16.length / ch);
+    for(let i = 0; i < frames; i++){
+      let s = 0;
+      for(let c = 0; c < ch; c++) s += i16[i * ch + c];
+      const mono = (s / ch) / 32768;
+      ring[ringWrite] = mono;
+      ringWrite = (ringWrite + 1) % ringCap;
+      if(ringCount < ringCap) ringCount++;
+      else ringRead = (ringRead + 1) % ringCap;   // full -> overwrite oldest
+    }
+  }
+  // Chrome only lets a low-MEI secure origin (a fresh raw-IP HTTPS) start sound
+  // inside a REAL user gesture. The top-bar speaker button and the first
+  // click/tap/key call this, so it always runs under user activation. No
+  // floating chip is needed; the top bar already has a sound toggle.
+  function activateAudioOnGesture(){
+    if(!audioOn) return;
+    const running = !!(actx && actx.state === 'running');
+    if(running && audioWs) return;                 // already audible — nothing to do
+    if(!connected){ ensureCtx(); try{ if(actx) actx.resume(); }catch(e){} return; }
+    // A context created at load on a low-MEI HTTPS origin is 'suspended', and
+    // Chrome can silently refuse to resume() that one even inside a gesture. The
+    // reliable unlock is to tear it down and create a fresh context *inside this
+    // very gesture* — such a context starts 'running', so the stream becomes
+    // audible on the first click/tap/key.
+    if(actx && actx.state === 'suspended'){ stopAudio('unlock-gesture'); }
+    ensureCtx();
+    if(actx && actx.state === 'suspended'){ try{ actx.resume(); }catch(e){} }
+    if(!audioWs){ startAudio(); }
+  }
+  function setupLegacy(){
+    // Playback runs on a ScriptProcessor ring-buffer node. An AudioWorklet was
+    // tried first, but on some Chrome builds its node stayed silent (its FIFO
+    // filled with real PCM while nothing reached the device); this plain node is
+    // proven audible on both http and https.
+    if(!actx || !aCfg || aNode) return;
+    ringCap = Math.max(1024, Math.ceil(aCfg.rate * 5)); // ~5s buffer
+    ring = new Float32Array(ringCap); ringWrite = 0; ringRead = 0; ringCount = 0;
+    try{
+      aNode = actx.createScriptProcessor(2048, 0, 1);
+      aNode.onaudioprocess = (ev) => {
+        const out = ev.outputBuffer.getChannelData(0);
+        const need = out.length;
+        let i = 0;
+        while(i < need && ringCount > 0){ out[i] = ring[ringRead]; ringRead = (ringRead + 1) % ringCap; ringCount--; i++; }
+        for(; i < need; i++) out[i] = 0;
+      };
+      aNode.connect(actx.destination);
+    }catch(e){ aNode = null; }
+  }
+  function setupNode(){ if(!actx || !aCfg || aNode) return; setupLegacy(); }
+
+  function scheduleAudioReconnect(){
+    if(!audioOn) return;
+    if(aTimer || !connected || document.visibilityState === 'hidden') return;
+    aTimer = setTimeout(() => { aTimer = null; startAudio(); }, 1000);
+  }
+  function startAudio(){
+    if(!audioOn) return;
+    // Avoid piling up duplicate live streams on the gateway if startAudio is ever
+    // fired twice for the same viewer (that produced cut/connect churn).
+    if(audioWs && (audioWs.readyState === WebSocket.CONNECTING || audioWs.readyState === WebSocket.OPEN)) return;
+    const ctx = ensureCtx();
+    if(!ctx) return;
+    stopAudio('restart');
+    ensureCtx();
+    const gen = ++audioWsGen;                       // only the newest socket is authoritative
+    const wsUrl2 = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/' + webpath +
+                   '/audio?rate=' + Math.round(actx.sampleRate) + '&channels=1';
+    let ws; try{ ws = new WebSocket(wsUrl2); }catch(e){ return; }
+    audioWs = ws;
+    ws.binaryType = 'arraybuffer';
+    ws.onmessage = (ev) => {
+      if(typeof ev.data === 'string'){
+        try{ const c = JSON.parse(ev.data);
+          if(c && c.type === 'config'){ aCfg = { rate: c.rate || actx.sampleRate, channels: c.channels || 1 }; setupNode(); }
+        }catch(e){}
+      } else { pushPCM(ev.data); }
+    };
+    ws.onclose = (ev) => {
+      if(audioWs === ws) audioWs = null;            // this socket is gone
+      // The gateway closes a socket with reason 'dup' when ANOTHER live socket
+      // already owns this remote's audio (a second tab/window on the same IP).
+      // We must NOT auto-reconnect in that case: two sockets would fight each
+      // other and keep killing the live stream. Going quiet lets the newest
+      // session (the one you just opened) hold the audio cleanly.
+      if(gen === audioWsGen){
+        const why = (ev && ev.reason) || '';
+        if(why === 'dup'){ stopAudio('dup'); }
+        else { scheduleAudioReconnect(); }
+      }
+    };
+    ws.onerror = () => { try{ ws.close(); }catch(e){} };
+  }
+  function setAudio(on, manual){
+    audioOn = on;
+    try{ localStorage.setItem('nexdesk_audio', on ? 'on' : 'off'); }catch(e){}
+    renderSoundBtn();
+    if(on){ activateAudioOnGesture(); }
+    else { stopAudio('muted'); }
+    if(manual){
+      if(on && actx && actx.state !== 'running'){
+        toast('<b>Sound on</b><span class="upd">Tap anywhere on the page once to start audio.</span>', 2600);
+      } else {
+        toast(on ? '<b>Sound on</b><span class="upd">You’ll now hear the virtual browser.</span>'
+                  : '<b>Sound off</b><span class="upd">Audio is muted.</span>', 2200);
+      }
+    }
+  }
+  btnSound.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    // Turning sound on always happens inside this click's user activation, so the
+    // AudioContext is created/resumed 'running' and playback starts. When sound is
+    // already marked ON but the browser hasn't granted playback yet (autoplay
+    // blocked, e.g. a fresh raw-IP HTTPS origin), this click must ENABLE audio —
+    // NOT mute it.
+    if(audioOn && actx && actx.state === 'suspended'){ setAudio(true, true); }
+    else { setAudio(!audioOn, true); }
+    focusRemote();
+  });
+  // A resume made *inside* this handler runs under user activation and succeeds,
+  // while one at load is denied on autoplay-blocked HTTPS origins. So unlock on
+  // the FIRST real user gesture (click/tap/key/drag) when sound is enabled.
+  function unlockSound(){ if(audioOn) activateAudioOnGesture(); }
+  ['pointerdown','mousedown','touchstart','pointerup','keydown','keyup'].forEach((evt) =>
+    window.addEventListener(evt, unlockSound, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && audioOn && !audioWs && connected){ startAudio(); }
+  });
+  // Open the stream now. On allowed origins the context is already running and
+  // sound flows immediately; on blocked ones the first gesture above resumes it.
+  if(audioOn) startAudio();
+
+
+
+  // ==========================================================================
+  // Mobile on-screen keyboard — types into the virtual desktop through the same
+  // rfb.sendKey() path the physical keyboard uses. It is plain HTML laid over
+  // the viewer, so it never appears on the remote screen itself. On touch
+  // devices it opens automatically after every successful connection, whenever
+  // the remote screen is tapped (the standard mobile-RDP pattern), or via the
+  // floating keyboard button; it closes only explicitly (hide arrow / toggle).
+  // ==========================================================================
+  const btnKbd = $('btnKbd'), vkbPanel = $('vkb'), vkbRows = $('vkbRows'),
+        vkbLangBtn = $('vkbLang'), vkbCloseBtn = $('vkbClose');
+  let vkLang = 'en', vkShift = false, vkOpen = false, vkShiftBtn = null;
+  let vkBsTimer = null, vkBsInt = null;
+  try{ if(localStorage.getItem('nexdesk_kbd_lang') === 'fa') vkLang = 'fa'; }catch(e){}
+  vkbLangBtn.textContent = vkLang.toUpperCase();
+
+  // The X keysym of every character below equals its Unicode code point, so a
+  // key is sent exactly like the physical-keyboard path (keysym injection).
+  // The 'Sym' layouts are the symbols layer (123/ABC); the bottom row always
+  // keeps the layer toggle plus Tab and Esc. ZWNJ (U+200C) lives on Persian.
+  const VK_LAYOUTS = {
+    en: [
+      ['1','2','3','4','5','6','7','8','9','0'],
+      ['q','w','e','r','t','y','u','i','o','p'],
+      ['a','s','d','f','g','h','j','k','l'],
+      ['shift','z','x','c','v','b','n','m','bs'],
+      ['123','tab','esc','space','enter']
+    ],
+    enSym: [
+      ['@','#','$','%','^','&','*','(',')','-'],
+      ['_','=','+','[',']','{','}','|','\\','/'],
+      [';',':','"',"'",'<','>','?','!',',','.'],
+      ['~','`','€','£','¥','¢','±','×','÷'],
+      ['abc','tab','esc','bs','space','enter']
+    ],
+    fa: [
+      ['۱','۲','۳','۴','۵','۶','۷','۸','۹','۰'],
+      ['ض','ص','ث','ق','ف','غ','ع','ه','خ','ح','ج','چ'],
+      ['ش','س','ی','ب','ل','ا','ت','ن','م','ک','گ'],
+      ['shift','ظ','ط','ز','ر','ذ','د','پ','و','bs'],
+      ['123','tab','esc','space','enter']
+    ],
+    faSym: [
+      ['@','#','$','٪','&','*','(',')','-','_'],
+      ['=','+','[',']','{','}','|','\\','/','<'],
+      ['>','«','»','؟','؛','،','٬','٫','÷','×'],
+      ['ء','أ','إ','آ','ؤ','ئ','ة','ٔ','ـ'],
+      ['abc','tab','esc','bs','space','enter']
+    ]
+  };
+  const VK_SPECIAL = {
+    shift: { sym: 0xFFE1, code: 'ShiftLeft', cls: 'wide fn shift', label: '\u21E7' },
+    bs:    { sym: 0xFF08, code: 'Backspace', cls: 'wide fn', label: '\u232B' },
+    space: { sym: 0x20,   code: 'Space',     cls: 'space fn', label: 'space' },
+    enter: { sym: 0xFF0D, code: 'Enter',     cls: 'wide fn', label: '\u21B5' },
+    tab:   { sym: 0xFF09, code: 'Tab',       cls: 'fn', label: 'tab' },
+    esc:   { sym: 0xFF1B, code: 'Escape',    cls: 'fn', label: 'esc' }
+  };
+  let vkLayer = 'alpha';               // 'alpha' | 'sym' (toggled by 123/ABC)
+  function vkKeysym(ch){
+    // English layout with Shift pressed sends the uppercase keysym (the remote
+    // X server types the case itself, so no Shift key is ever held remotely).
+    if(vkShift && vkLayer === 'alpha' && vkLang === 'en'){
+      const up = ch.toUpperCase();
+      if(up !== ch) return up.charCodeAt(0);
+    }
+    return ch.charCodeAt(0);
+  }
+  function vkTapChar(ch){
+    if(!rfb || !connected) return;
+    // Persian (and other non-Latin) glyphs have no keycode on the remote 'us'
+    // layout, so sending them as keysyms types nothing into the page. Inject
+    // them as text through the clipboard bridge (set X clipboard, then Ctrl+V).
+    if(ch.charCodeAt(0) > 0x7F){ vkTypeChar(ch); return; }
+    const sym = vkKeysym(ch);
+    try{ rfb.sendKey(sym, null, true); rfb.sendKey(sym, null, false); }catch(e){}
+  }
+  function vkTapSpecial(sp){
+    if(!rfb || !connected) return;
+    // ZWNJ is a real glyph, not a physical key, so it can't be sent as a
+    // keysym either — type it through the same text bridge.
+    if(sp.code === null && sp.sym > 0x7F){ vkTypeChar(String.fromCodePoint(sp.sym)); return; }
+    try{ rfb.sendKey(sp.sym, sp.code, true); rfb.sendKey(sp.sym, sp.code, false); }catch(e){}
+  }
+  // Type one character into the virtual desktop regardless of the remote
+  // keyboard layout. Preferred path: put the text on the X clipboard through
+  // the gateway, then press Ctrl+V in the focused field — that works in any
+  // focused window (web page, address bar, dialogs). Ctrl+V is only pressed
+  // after the gateway confirms the clipboard was actually set, so a missing
+  // clipboard tool can never paste stale/English text. When no clipboard tool
+  // exists, we fall back to the gateway's DevTools bridge, which inserts the
+  // character straight into the focused element of the page (layout- and
+  // clipboard-independent). Requests are serialized so fast taps stay ordered.
+  let vkTypeChain = Promise.resolve();
+  function vkTypeChar(ch){
+    vkTypeChain = vkTypeChain.then(() => new Promise((resolve) => {
+      if(!rfb || !connected){ resolve(); return; }
+      const pressPaste = () => {
+        try {
+          rfb.sendKey(0xFFE3, 'ControlLeft', true);
+          rfb.sendKey(0x76, 'KeyV', true);
+          rfb.sendKey(0x76, 'KeyV', false);
+          rfb.sendKey(0xFFE3, 'ControlLeft', false);
+        } catch (e) {}
+        setTimeout(resolve, 30);
+      };
+      const post = (p, o) => fetch(location.origin + '/' + webpath + p,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(o) })
+        .then((r) => r.json().catch(() => ({ ok: false })));
+      post('/clipboard', { text: ch }).then((res) => {
+        if (res && res.ok) { pressPaste(); return; }
+        // Clipboard tool unavailable or endpoint down — never paste blind
+        // (that would insert whatever was last in the clipboard). Instead try
+        // inserting straight into the page via the gateway's CDP bridge.
+        return post('/ime', { text: ch }).then(() => { setTimeout(resolve, 30); })
+          .catch(() => { setTimeout(resolve, 30); });
+      }).catch(() => { setTimeout(resolve, 30); });
+    }));
+  }
+  function vkPaintShift(){
+    vkbPanel.classList.toggle('shift-on', vkShift);
+    const ups = vkShift && vkLang === 'en';
+    const keys = vkbRows.querySelectorAll('button[data-ch]');
+    for(const b of keys) b.textContent = ups ? b.dataset.ch.toUpperCase() : b.dataset.ch;
+  }
+  function vkToggleShift(){ vkShift = !vkShift; vkPaintShift(); }
+  function vkToggleLayer(){
+    vkLayer = vkLayer === 'sym' ? 'alpha' : 'sym';
+    vkShift = false;
+    vkRender();
+  }
+  function vkBsStart(){
+    vkTapSpecial(VK_SPECIAL.bs);
+    vkBsTimer = setTimeout(()=>{
+      vkBsInt = setInterval(()=>{
+        if(!vkOpen || !connected){ vkBsStop(); return; }
+        vkTapSpecial(VK_SPECIAL.bs);
+      }, 60);
+    }, 400);
+  }
+  function vkBsStop(){
+    if(vkBsTimer){ clearTimeout(vkBsTimer); vkBsTimer = null; }
+    if(vkBsInt){ clearInterval(vkBsInt); vkBsInt = null; }
+  }
+  function vkRender(){
+    vkbRows.replaceChildren();
+    for(const row of VK_LAYOUTS[vkLang + (vkLayer === 'sym' ? 'Sym' : '')]){
+      const r = document.createElement('div');
+      r.className = row.length > 9 ? 'vkb-row dense' : 'vkb-row';
+      for(const k of row){
+        const b = document.createElement('button');
+        b.type = 'button';
+        if(VK_SPECIAL[k]){
+          const sp = VK_SPECIAL[k];
+          b.className = 'vk ' + sp.cls;
+          b.textContent = sp.label;
+          if(k === 'shift'){ vkShiftBtn = b; b.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); vkToggleShift(); }); }
+          else if(k === 'bs'){
+            b.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); vkBsStart(); });
+            b.addEventListener('pointerup', (ev)=>{ ev.preventDefault(); vkBsStop(); });
+            b.addEventListener('pointerleave', vkBsStop);
+            b.addEventListener('pointercancel', vkBsStop);
+          }
+          else b.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); vkTapSpecial(sp); });
+        } else if(k === '123' || k === 'abc'){
+          b.className = 'vk fn';
+          b.textContent = k === '123' ? '123' : 'ABC';
+          b.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); vkToggleLayer(); });
+        } else {
+          b.className = 'vk';
+          b.dataset.ch = k;
+          b.textContent = (vkShift && vkLayer === 'alpha' && vkLang === 'en') ? k.toUpperCase() : k;
+          b.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); vkTapChar(k); });
+        }
+        r.appendChild(b);
+      }
+      vkbRows.appendChild(r);
+    }
+    vkPaintShift();
+  }
+  function vkSyncHeight(){
+    const h = vkOpen ? vkbPanel.offsetHeight : 0;
+    try{ document.documentElement.style.setProperty('--vkb-h', h + 'px'); }catch(e){}
+    document.body.classList.toggle('vkb-open', vkOpen);
+  }
+  function vkOpenPanel(){
+    vkOpen = true;
+    vkRender();
+    vkbPanel.classList.remove('hidden');
+    btnKbd.classList.add('act');
+    vkHideFab();
+    vkSyncHeight();
+  }
+  function vkClosePanel(remember){
+    vkOpen = false;
+    vkbPanel.classList.add('hidden');
+    btnKbd.classList.remove('act');
+    vkSyncHeight();
+    vkShowFab();
+    if(remember){ try{ localStorage.setItem('nexdesk_kbd_off', '1'); }catch(e){} }
+  }
+  vkbPanel.addEventListener('contextmenu', (e)=>{ e.preventDefault(); });
+  btnKbd.addEventListener('click', (e)=>{ e.stopPropagation(); if(vkOpen) vkClosePanel(); else vkOpenPanel(); });
+  vkbCloseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); vkClosePanel(true); });
+  vkbLangBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    vkLang = vkLang === 'en' ? 'fa' : 'en';
+    vkShift = false;
+    vkbLangBtn.textContent = vkLang.toUpperCase();
+    try{ localStorage.setItem('nexdesk_kbd_lang', vkLang); }catch(e){}
+    vkRender();
+  });
+  // The keyboard closes only explicitly (the hide arrow or the top-bar toggle).
+  // Tapping the remote screen never dismisses it — instead, if it was closed,
+  // that tap opens it again (see the touch handler above). Auto-open after a
+  // successful connection is wired into connect()'s connect event, and a
+  // floating button on touch devices keeps the keyboard one tap away at all
+  // times — even while the top bar is hidden.
+  function vkMaybeAutoOpen(){
+    if(!IS_TOUCH || vkOpen) return;
+    try{ if(localStorage.getItem('nexdesk_kbd_off')) return; }catch(e){}
+    vkOpenPanel();
+  }
+
+  // ==========================================================================
+  // Mobile Mouse / Trackpad mode (Phase 1).
+  // Adds an explicit, toggleable "Mouse" mode for touch devices only. While it
+  // is OFF the existing Touch behaviour (tap = click at point + open keyboard,
+  // drag to pan, double-tap zoom) is completely untouched. While it is ON, this
+  // overlay owns the screen's touches (capture-phase stopPropagation so neither
+  // noVNC's handlers on the canvas nor the legacy tap logic fire) and drives the
+  // remote pointer through noVNC's own _sendMouse with element-box coordinates,
+  // i.e. exactly the pipeline a native click uses — precise and scale/pan-proof.
+  // Desktop (fine pointer) never enables it; the guard CSS hides the controls.
+  // --------------------------------------------------------------------------
+  // NOTE: these bindings live at module top-level (not inside a block) so the
+  // connect()/disconnect() handlers above can reach mouseShowPill/mouseOnDisconnect.
+  const mousePill = $('mousePill');
+  const mousePtr  = $('mousePointer');
+    let mouseMode = false;
+    const mp = { x:0, y:0, init:false };          // virtual cursor (canvas-box px)
+    const mPtr = new Map();                        // active touches id -> {x,y,ox,oy,dist}
+    let mPhase = 'idle';                           // idle | single | multi
+    let mHadTwo = false;                           // gesture ever had 2+ fingers
+    let mGsT = 0, mScrollAcc = 0, mScrollBaseY = null;
+    let mLastPt = null;                            // previous live-touch coords (pointer move)
+    let mLastSend = 0;
+    let mSel = false;                              // a text-select left-drag is live (left held)
+    let mArm = false, mArmX = 0, mArmY = 0;        // armed long-hold candidate for select
+    const M_SEND_MS = 30, M_TAP_MOVE = 12, M_LONG_MS = 460, M_SEL_DRAG = 8;
+    const M_SCROLL_PX = 24;    // vertical two-finger travel (px) that yields one scroll notch
+    const M_WHEEL_DELTA = 90;  // deltaY of each synthetic wheel event (>= noVNC WHEEL_STEP)
+
+    function mouseCanvas(){ return (screen && screen.querySelector('canvas')) || (rfb && rfb._canvas) || null; }
+    function mouseCanSend(){ return rfb && rfb._rfbConnectionState === 'connected' && mouseMode; }
+
+    function mouseEnsurePos(){
+      const c = mouseCanvas(); if(!c) return;
+      const w = c.clientWidth || 1, h = c.clientHeight || 1;
+      if(!mp.init || mp.x > w || mp.y > h){ mp.x = w / 2; mp.y = h / 2; mp.init = true; }
+    }
+    function mouseSend(mask){
+      if(!mouseCanSend()) return;
+      const c = mouseCanvas(); if(!c) return;
+      const x = Math.max(0, Math.min(c.clientWidth || 1, mp.x));
+      const y = Math.max(0, Math.min(c.clientHeight || 1, mp.y));
+      try{ rfb._sendMouse(x, y, mask); rfb._mouseButtonMask = mask; }catch(e){}
+    }
+    function mouseClick(mask){
+      mouseSend(mask);
+      setTimeout(function(){ if(mouseMode) mouseSend(0); }, 70);
+    }
+    // Two-finger scroll: rather than synthesizing raw VNC wheel-button presses
+    // ourselves (which a server can drop if the pointer isn't over a scrollable
+    // element), we dispatch a real DOM 'wheel' event on the RFB canvas at the
+    // two fingers' current position. noVNC keeps its own battle-tested wheel
+    // handler on that canvas — the very same one every desktop scroll uses — so
+    // it scrolls whatever is under the two fingers, exactly mirroring the native
+    // two-finger scroll that already works when Mouse mode is off.
+    function mouseScrollWheel(clientX, clientY, deltaY){
+      if(!mouseCanSend()) return;
+      const c = mouseCanvas(); if(!c) return;
+      try{
+        const ev = new WheelEvent('wheel', {
+          deltaY: deltaY, deltaMode: 0,
+          clientX: clientX, clientY: clientY,
+          bubbles: true, cancelable: true
+        });
+        c.dispatchEvent(ev);
+      }catch(e){}
+    }
+    // Force-release any pressed button at the pointer (used when leaving mouse
+    // mode, in case a click's release was still pending).
+    function mouseReleaseAll(){
+      if(!rfb || rfb._rfbConnectionState !== 'connected') return;
+      const c = mouseCanvas(); if(!c) return;
+      try{ rfb._sendMouse(Math.max(0, Math.min(c.clientWidth || 1, mp.x)), Math.max(0, Math.min(c.clientHeight || 1, mp.y)), 0); }catch(e){}
+    }
+    function mouseRender(){
+      if(!mousePtr) return;
+      if(!mouseMode){ mousePtr.style.display = 'none'; return; }
+      const c = mouseCanvas(); if(!c){ mousePtr.style.display = 'none'; return; }
+      const r = c.getBoundingClientRect();
+      mousePtr.style.display = 'block';
+      mousePtr.style.transform = 'translate(' + (r.left + mp.x) + 'px,' + (r.top + mp.y) + 'px) translate(-50%,-50%)';
+    }
+    function mouseLbl(text, on){
+      if(!mousePill) return;
+      mousePill.classList.toggle('on', !!on);
+      const s = mousePill.querySelector('.mp-lbl');
+      if(s) s.textContent = text;
+    }
+    function mouseSetMode(on){
+      if(on === mouseMode) return;
+      mouseMode = on;
+      mPhase = 'idle'; mHadTwo = false; mPtr.clear(); mSel = false; mArm = false; mScrollAcc = 0; mScrollBaseY = null; mLastPt = null;
+      if(on){
+        document.body.classList.add('mouse-mode');
+        showControls();
+        mouseEnsurePos(); mouseRender();
+        mouseLbl('Mouse', true);
+        toast('<b>Mouse mode</b><span class="upd">Drag = move · Tap = click · Hold + drag = select text · 2-finger tap/hold = right-click · 2-finger drag = scroll</span>', 5200);
+      } else {
+        document.body.classList.remove('mouse-mode');
+        mouseLbl('Mouse', false);
+        mouseReleaseAll();
+        if(mousePtr) mousePtr.style.display = 'none';
+      }
+      setTimeout(focusRemote, 40);
+    }
+    function mouseShowPill(){ if(mousePill && IS_TOUCH && connected) mousePill.style.display = 'flex'; }
+    function mouseHidePill(){ if(mousePill) mousePill.style.display = 'none'; }
+    function mouseOnDisconnect(){ mouseSetMode(false); mouseHidePill(); }
+    if(mousePill) mousePill.addEventListener('click', function(e){ e.stopPropagation(); mouseSetMode(!mouseMode); });
+
+    // Return true only when this touch belongs to mouse mode and started on the
+    // virtual screen (never on the floating controls). stopPropagation at this
+    // capture point prevents noVNC's canvas handlers AND the legacy tap logic
+    // (both bubble/target-phase) from seeing it.
+    function mouseGuard(e){
+      if(!mouseMode || !connected) return false;
+      const t = e.changedTouches && e.changedTouches[0];
+      let el = t ? document.elementFromPoint(t.clientX, t.clientY) : (e.target || null);
+      if(el && screen && (el === screen || screen.contains(el))){
+        if(e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        return true;
+      }
+      return false;
+    }
+    function mouseTs(e){
+      if(!mouseGuard(e)) return;
+      const fresh = mPtr.size === 0;
+      for(const t of e.changedTouches){
+        mPtr.set(t.identifier, { x:t.clientX, y:t.clientY, ox:t.clientX, oy:t.clientY, dist:0 });
+      }
+      if(fresh){ mGsT = Date.now(); mHadTwo = false; mPhase = mPtr.size >= 2 ? 'multi' : 'single'; mSel = false; mArm = false; mScrollAcc = 0; mScrollBaseY = null; mLastPt = null; }
+      if(mPtr.size >= 2){
+        // A second finger landed: never start or keep a text-select drag with 2+ fingers.
+        if(mSel){ mouseSend(0); mSel = false; } mArm = false;
+        mHadTwo = true; mPhase = 'multi'; mScrollBaseY = null;
+      }
+    }
+    function mouseTm(e){
+      if(!mouseGuard(e)) return;
+      // Update per-finger bookkeeping used for tap/gesture classification.
+      for(const t of e.changedTouches){
+        const p = mPtr.get(t.identifier);
+        if(p){
+          const d = Math.hypot(t.clientX - p.ox, t.clientY - p.oy); if(d > p.dist) p.dist = d;
+          p.x = t.clientX; p.y = t.clientY;
+        }
+      }
+      const n = e.touches.length;               // how many fingers are down right now
+      const now = Date.now();
+      if(n === 1){
+        // A leftover single finger after a two-finger gesture must NOT start
+        // moving the pointer until the whole hand has been lifted.
+        if(mPhase === 'multi'){ mLastPt = { x: e.touches[0].clientX, y: e.touches[0].clientY }; mScrollBaseY = null; mScrollAcc = 0; return; }
+        const t = e.touches[0];
+        // Text-select: a single finger HELD STILL for M_LONG_MS ("long press") only
+        // becomes a candidate (mArm) and does nothing by itself. If the finger then
+        // starts to drag (travels > M_SEL_DRAG from where it settled) we press & hold
+        // the LEFT button at the pointer and keep it held while the finger moves, so
+        // the drag selects an arbitrary run of text. A long press released WITHOUT
+        // that drag never commits and still falls back to right-click in mouseEnd.
+        if(!mSel && !mHadTwo && mPhase === 'single' && !mArm && (now - mGsT) >= M_LONG_MS){
+          const p = mPtr.get(t.identifier);
+          if(p && p.dist <= M_TAP_MOVE){ mArm = true; mArmX = t.clientX; mArmY = t.clientY; }
+        }
+        if(!mSel && mArm && Math.hypot(t.clientX - mArmX, t.clientY - mArmY) > M_SEL_DRAG){
+          mArm = false; mSel = true;                       // commit: begin a left-drag select
+          mLastPt = { x: t.clientX, y: t.clientY };
+          mouseRender();
+          mouseSend(1); mLastSend = now;                   // left press anchors the selection
+        }
+        // Pointer motion. While a select-drag is live we move the pointer and keep
+        // LEFT held; otherwise a single-finger drag just moves the pointer (no click)
+        // exactly as before. An armed-but-not-committed hold keeps the pointer still.
+        if(!mArm){
+          if(mLastPt){ mp.x += (t.clientX - mLastPt.x); mp.y += (t.clientY - mLastPt.y); }
+          mLastPt = { x: t.clientX, y: t.clientY };
+        }
+        mouseRender();
+        if(now - mLastSend >= M_SEND_MS){ mouseSend(mSel ? 1 : 0); mLastSend = now; }
+      } else if(n >= 2){
+        mLastPt = null;
+        // Two or more fingers are down. Two outcomes, decided here / on release:
+        //  - a quick tap (little movement) => right-click at the CURSOR, decided
+        //    in mouseEnd. Crucially we must NOT relocate the cursor while the
+        //    fingers are down: that relocation is exactly what made a two-finger
+        //    tap jump the pointer away and fire the right-click elsewhere.
+        //  - a vertical drag               => scroll, delivered below by throwing
+        //    real 'wheel' events onto the RFB canvas at the fingers' position,
+        //    so noVNC's own wheel path scrolls what sits under the two fingers.
+        let sx = 0, sy = 0; for(let i = 0; i < n; i++){ sx += e.touches[i].clientX; sy += e.touches[i].clientY; }
+        const ax = sx / n, ay = sy / n;
+        if(mScrollBaseY == null){ mScrollBaseY = ay; mScrollAcc = 0; return; }
+        // Natural/trackpad direction: dragging the two fingers UP scrolls the page
+        // DOWN and dragging DOWN scrolls UP, i.e. content follows the fingers.
+        const dy = ay - mScrollBaseY; mScrollBaseY = ay; mScrollAcc -= dy;
+        while(mScrollAcc >= M_SCROLL_PX){ mouseScrollWheel(ax, ay, M_WHEEL_DELTA); mScrollAcc -= M_SCROLL_PX; }
+        while(mScrollAcc <= -M_SCROLL_PX){ mouseScrollWheel(ax, ay, -M_WHEEL_DELTA); mScrollAcc += M_SCROLL_PX; }
+      }
+    }
+    function mouseEnd(e){
+      if(!mouseGuard(e)) return;
+      let maxDist = 0; mPtr.forEach(function(p){ if(p.dist > maxDist) maxDist = p.dist; });
+      const had = mPtr.size;
+      for(const t of e.changedTouches) mPtr.delete(t.identifier);
+      if(had > 0 && mPtr.size === 0){
+        if(mSel){
+          // A text-select drag ended: release the left button. The remote app keeps
+          // the selection just made; do not also fire a tap/right-click.
+          mouseSend(0); mSel = false;
+        } else {
+          const dur = Date.now() - mGsT;
+          if(maxDist <= M_TAP_MOVE){
+            if(mHadTwo) mouseClick(4);                    // two-finger tap = right
+            else if(dur >= M_LONG_MS) mouseClick(4);       // hold (no drag) = right
+            else mouseClick(1);                            // short tap = left
+          }
+        }
+        mPhase = 'idle'; mHadTwo = false; mArm = false; mScrollAcc = 0; mScrollBaseY = null; mLastPt = null;
+      }
+    }
+    function mouseCancel(e){
+      if(!mouseGuard(e)) return;
+      for(const t of e.changedTouches) mPtr.delete(t.identifier);
+      if(mPtr.size === 0){
+        if(mSel){ mouseSend(0); mSel = false; }
+        mPhase = 'idle'; mHadTwo = false; mArm = false; mScrollAcc = 0; mScrollBaseY = null; mLastPt = null;
+      }
+    }
+
+    // Only touch devices need these listeners; fine-pointer devices never fire
+    // touch events, so attaching only when IS_TOUCH keeps the desktop path inert.
+    if(IS_TOUCH){
+      screen.addEventListener('touchstart',  mouseTs,     { capture:true, passive:false });
+      screen.addEventListener('touchmove',   mouseTm,     { capture:true, passive:false });
+      screen.addEventListener('touchend',    mouseEnd,    { capture:true, passive:false });
+      screen.addEventListener('touchcancel', mouseCancel, { capture:true, passive:false });
+    }
+
+  connect();
+</script>
+</body>
+</html>
